@@ -10,17 +10,11 @@ Raspberry Pi, no Linux, no soldering.
 
 ## Buy the hardware
 
-Everything runs on the one board — no Raspberry Pi, no soldering.
+Everything runs on the one ~$26 board — no Raspberry Pi, no soldering.
 
-- **Board — Waveshare ESP32-S3-Touch-LCD-2:**
-  [direct from Waveshare](https://www.waveshare.com/esp32-s3-touch-lcd-2.htm) (usually cheapest) ·
-  [on Amazon](https://www.amazon.com/s?k=Waveshare+ESP32-S3-Touch-LCD-2&tag=daveeuson01-20)
-- **USB-C data cable** — needed to flash; a charge-only cable won't enumerate:
-  [on Amazon](https://www.amazon.com/s?k=usb-c+data+cable&tag=daveeuson01-20)
-- **LiPo battery (optional)** — for cordless use via the board's battery header.
-  ⚠️ **Check the connector and polarity match your board before plugging one in
-  — a reversed generic LiPo can damage it.**
-  [on Amazon](https://www.amazon.com/s?k=3.7v+lipo+battery+jst&tag=daveeuson01-20)
+- **Waveshare ESP32-S3-Touch-LCD-2:**
+  [on Amazon](https://www.amazon.com/dp/B0DTTL56ZR?tag=daveeuson01-20) ·
+  [direct from Waveshare](https://www.waveshare.com/esp32-s3-touch-lcd-2.htm)
 
 <sub>*As an Amazon Associate I earn from qualifying purchases.*</sub>
 
