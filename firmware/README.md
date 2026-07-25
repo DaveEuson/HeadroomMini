@@ -102,13 +102,22 @@ https://www.printables.com/model/1188149-enclosure-for-esp32-s3-touch-lcd-2
   **ntfy** topic (or Pushover keys) and a threshold, and the board pushes when
   a window crosses it (with a recovery notice). Charge state is inferred from
   voltage (no charge-status line on this board).
+- **Phase 4 — countdown & moods (done).** A **Timer** screen showing a live,
+  second-by-second `H:MM:SS` countdown to your soonest reset (colored amber
+  under 30 min, red under 5). Sprocket now reacts to how dire things are —
+  a **panic** face (wide eyes, sweat, gasp) under 15% headroom and a **KO**
+  face (X eyes, dimmed antenna) at zero.
+- **Phase 5 — hardening (planned, needs hardware).** TLS cert verification
+  (embed a CA bundle, drop `setInsecure`) and IMU-driven auto-rotate
+  (mounting-dependent, so it needs calibrating on a real board). Both require
+  flashing to hardware to validate, so they're tracked for a dedicated release.
 
 ## Notes
 
 - `http://<board-ip>:8080/settings` configures the clock timezone (defaults to
   US Eastern; countdowns are timezone-independent), 12/24-hour format, overnight
   dimming, **which screens are in the tap rotation** (meters / focus / history /
-  Sprocket), the **default screen** shown at power-on, and optional
+  Sprocket / Timer), the **default screen** shown at power-on, and optional
   **auto-rotate** (cycle the enabled screens every 10-60 s; tapping pauses it).
 - Update over Wi-Fi at `http://<board-ip>:8080/update` — it downloads the app
   image from the latest GitHub release into the inactive OTA slot and reboots,
@@ -121,3 +130,16 @@ https://www.printables.com/model/1188149-enclosure-for-esp32-s3-touch-lcd-2
 - If the saved Wi-Fi can't be reached at boot it falls back to the setup
   hotspot without erasing the saved network (a router reboot won't force
   reprovisioning — power-cycle the board once the router is back).
+
+## Troubleshooting
+
+- **"login expired — re-pair" on the meters screen.** The stored Claude login
+  is no longer valid, usually because the token was rotated out. Run the
+  **companion app** on your computer once (the tray app, or `companion --pair`)
+  and it re-signs the board in automatically; if you set the board up by pasting
+  a login at `/connect`, paste a current one there instead. An OTA update never
+  touches your login — this is a token issue, not an update regression.
+- **It keeps happening every day or two.** The board and your computer's Claude
+  Code are almost certainly sharing one login, so they rotate each other's
+  refresh token and log each other out. Give the board its **own** Claude login
+  and the two stop fighting.
