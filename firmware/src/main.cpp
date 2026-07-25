@@ -140,10 +140,11 @@ static char      tzEnv[48]   = "EST5EDT,M3.2.0,M11.1.0";  // POSIX TZ, set via /
 static bool      clock24     = false; // false = 12-hour (3:45 PM), true = 24-hour
 static bool      nightDim    = true;  // ease the backlight down overnight
 static const uint8_t NIGHT_LEVEL = 40;
-static int       uiScreen    = 0;     // 0 = meters, 1 = focus, 2 = history, 3 = Sprocket
-static const int UI_SCREENS  = 4;
-static const char *SCREEN_NAMES[UI_SCREENS] = {"Meters", "Focus", "History", "Sprocket"};
-static uint8_t   screenMask  = 0x0F;  // bit i set = screen i is in the rotation
+static int       uiScreen    = 0;     // 0 meters 1 focus 2 history 3 sprocket 4 timer
+static const int UI_SCREENS  = 5;
+static const char *SCREEN_NAMES[UI_SCREENS] = {"Meters", "Focus", "History", "Sprocket", "Timer"};
+static uint8_t   screenMask  = 0x1F;  // bit i set = screen i is in the rotation
+static time_t    timerResetAt = 0;    // reset time the Timer screen is counting to
 static int       defaultScreen = 0;   // screen shown at power-on
 static int       rotateSecs  = 0;     // 0 = tap-only; else auto-rotate every N s
 static unsigned long lastUserTouch = 0;  // for pausing auto-rotate after a tap
@@ -215,6 +216,15 @@ static void fmtDur(long mins, char *out, size_t n) {
   long h = mins / 60, m = mins % 60;
   if (h > 0) snprintf(out, n, "%ldh %ldm", h, m);
   else       snprintf(out, n, "%ldm", m);
+}
+
+// Live ticking countdown: "1:23:45" (H:MM:SS), for the Timer screen.
+static void fmtClock(time_t resets, char *out, size_t n) {
+  time_t now = time(nullptr);
+  if (!resets || !timeSynced || now < 100000) { strlcpy(out, "--:--:--", n); return; }
+  long s = (long)(resets - now);
+  if (s < 0) s = 0;
+  snprintf(out, n, "%ld:%02ld:%02ld", s / 3600, (s % 3600) / 60, s % 60);
 }
 
 // ------------------------------------------------------------------ drawing
@@ -607,11 +617,44 @@ static void drawMascot() {
   }
 }
 
+// Timer screen: one big countdown to the soonest reset, ticking every second.
+// The clock digits live in a fixed band so the per-second tick can redraw just
+// that strip (drawTimerClock) instead of the whole screen.
+static void drawTimerClock() {
+  char b[16];
+  fmtClock(timerResetAt, b, sizeof(b));
+  long s = (timerResetAt && timeSynced) ? (long)(timerResetAt - time(nullptr)) : -1;
+  uint16_t c = s < 0 ? C_MUTED : s < 300 ? C_CRIT : s < 1800 ? C_WARN : C_ACC;
+  gfx->fillRect(0, 150, 240, 52, C_BG);     // clear the digits band
+  drawCentered(b, 156, 4, c);
+}
+
+static void drawTimer() {
+  gfx->fillScreen(C_BG);
+  drawUpdateBadge(222, 20);
+  int idx = -1;                             // soonest upcoming reset
+  for (int i = 0; i < nWindows; i++)
+    if (windows[i].resets_at &&
+        (idx < 0 || windows[i].resets_at < windows[idx].resets_at)) idx = i;
+  if (idx < 0) {
+    timerResetAt = 0;
+    drawCentered("Countdown", 60, 3, C_INK);
+    drawCentered("waiting for usage data", 156, 2, C_MUTED);
+    return;
+  }
+  timerResetAt = windows[idx].resets_at;
+  drawCentered(windows[idx].label, 78, 2, C_MUTED);
+  drawCentered("resets in", 112, 3, C_INK);
+  drawTimerClock();
+  drawCentered("H : MM : SS", 214, 1, C_MUTED);
+}
+
 // Draw whichever screen is active (data updates / ticks call this).
 static void drawScreen() {
   if (uiScreen == 1)      drawFocus();
   else if (uiScreen == 2) drawHistory();
   else if (uiScreen == 3) drawMascot();
+  else if (uiScreen == 4) drawTimer();
   else                    drawMeters();
 }
 
@@ -1067,15 +1110,25 @@ static void loadCreds() {
   strlcpy(tzEnv, prefs.getString("tz", tzEnv).c_str(), sizeof(tzEnv));
   clock24    = prefs.getBool("clk24", false);
   nightDim   = prefs.getBool("ndim", true);
-  screenMask = prefs.getUChar("smask", 0x0F);
+  screenMask = prefs.getUChar("smask", 0x1F);
   defaultScreen = prefs.getInt("dscr", 0);
   rotateSecs = prefs.getInt("rots", 0);
   pushToken  = prefs.getString("ptok", "");
+  bool timerMigrated = prefs.getBool("tmrmig", false);
   prefs.end();
   selfHosted = accessTok.length() > 0;
   if (defaultScreen < 0 || defaultScreen >= UI_SCREENS) defaultScreen = 0;
   screenMask &= (1 << UI_SCREENS) - 1;      // ignore stray high bits
   screenMask |= (1 << defaultScreen);       // the default is always in the rotation
+  // One-time: reveal the new Timer screen for installs that predate it, then
+  // never touch the mask again (so a later un-check sticks).
+  if (!timerMigrated) {
+    screenMask |= (1 << 4);
+    prefs.begin("headroom", false);
+    prefs.putUChar("smask", screenMask);
+    prefs.putBool("tmrmig", true);
+    prefs.end();
+  }
   uiScreen = defaultScreen;                 // boot on the chosen screen
 }
 
@@ -2101,6 +2154,12 @@ void loop() {
     applyBacklight();     // ease down / back up as night comes and goes
     readBattery();
     drawScreen();
+  }
+  // Timer screen ticks its countdown every second (redraws only the digits).
+  static unsigned long lastSec = 0;
+  if (uiScreen == 4 && !screenOff && timerResetAt && millis() - lastSec >= 1000) {
+    lastSec = millis();
+    drawTimerClock();
   }
   // Auto-rotate: advance to the next enabled screen every rotateSecs, but only
   // when more than one screen is enabled and you haven't touched it recently.
