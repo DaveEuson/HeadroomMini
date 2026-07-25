@@ -573,20 +573,34 @@ static void drawMascot() {
   int u = idx < 0 ? -1 : (int)(windows[idx].utilization + 0.5f);
   int left = u < 0 ? -1 : 100 - u;
   bool night = nightNow();
-  int mood = left < 0 ? 4 : night ? 3 : left <= 10 ? 2 : left <= 30 ? 1 : 0;
-  uint16_t mc = mood == 2 ? C_CRIT : mood == 1 ? C_WARN
-              : mood == 0 ? C_ACC : C_MUTED;
+  // 0 happy  1 concerned  2 panic  3 asleep  4 no-data  5 out/KO
+  int mood = left < 0 ? 4 : night ? 3
+           : left <= 0 ? 5 : left <= 15 ? 2 : left <= 30 ? 1 : 0;
+  uint16_t mc = mood == 0 ? C_ACC : mood == 1 ? C_WARN
+              : (mood == 2 || mood == 5) ? C_CRIT : C_MUTED;
 
-  gfx->fillRect(ox + 3 * S, oy + S, S, S, mc);        // antenna balls glow w/ mood
-  gfx->fillRect(ox + 7 * S, oy + S, S, S, mc);
+  // antenna balls glow with mood, but go dark when out or asleep
+  uint16_t ball = (mood == 5 || mood == 3) ? C_MUTED : mc;
+  gfx->fillRect(ox + 3 * S, oy + S, S, S, ball);
+  gfx->fillRect(ox + 7 * S, oy + S, S, S, ball);
 
   int ey = oy + 5 * S, lx = ox + 3 * S, rx = ox + 7 * S;   // eyes
   if (mood == 3) {                                    // asleep - closed
     gfx->fillRect(lx, ey + S / 2, S, S / 4, C_OUT);
     gfx->fillRect(rx, ey + S / 2, S, S / 4, C_OUT);
-  } else if (mood == 2) {                             // tapped out - small
-    gfx->fillRect(lx + S / 4, ey + S / 4, S / 2, S / 2, C_OUT);
-    gfx->fillRect(rx + S / 4, ey + S / 4, S / 2, S / 2, C_OUT);
+  } else if (mood == 5) {                             // out - dead "X" eyes
+    for (int t = -1; t <= 1; t++) {
+      gfx->drawLine(lx, ey + t, lx + S - 1, ey + S - 1 + t, C_OUT);
+      gfx->drawLine(lx + S - 1, ey + t, lx, ey + S - 1 + t, C_OUT);
+      gfx->drawLine(rx, ey + t, rx + S - 1, ey + S - 1 + t, C_OUT);
+      gfx->drawLine(rx + S - 1, ey + t, rx, ey + S - 1 + t, C_OUT);
+    }
+  } else if (mood == 2) {                             // panic - wide eyes + sweat
+    gfx->fillRect(lx, ey - S / 4, S, S + S / 4, C_FACE);
+    gfx->fillRect(rx, ey - S / 4, S, S + S / 4, C_FACE);
+    gfx->fillRect(lx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
+    gfx->fillRect(rx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
+    gfx->fillRect(rx + S + S / 3, ey - S / 3, S / 3, S / 2, C_SPRK);   // sweat bead
   } else {                                            // open
     gfx->fillRect(lx, ey, S, S, C_OUT);
     gfx->fillRect(rx, ey, S, S, C_OUT);
@@ -595,6 +609,8 @@ static void drawMascot() {
   int my = oy + 7 * S, mx = ox + 4 * S;               // mouth
   if (mood == 0)      gfx->fillRect(mx, my + S / 3, 3 * S, S / 2, C_OUT);   // smile
   else if (mood == 1) gfx->fillRect(mx + S, my + S / 4, S, S / 2, C_OUT);   // worried o
+  else if (mood == 2) gfx->fillRect(mx + S, my, S, S, C_OUT);               // gasping O
+  else if (mood == 5) gfx->fillRect(mx + S / 2, my + S / 2, 2 * S, S / 5, C_OUT); // KO flat
   else if (mood == 3) gfx->fillRect(mx + S, my + S / 3, S, S / 3, C_OUT);   // sleepy
   else                gfx->fillRect(mx, my + S / 2, 3 * S, S / 5, C_OUT);   // flat
 
@@ -602,7 +618,8 @@ static void drawMascot() {
 
   const char *word = mood == 0 ? "plenty of headroom"
                    : mood == 1 ? "getting low"
-                   : mood == 2 ? "tapped out"
+                   : mood == 2 ? "running on fumes"
+                   : mood == 5 ? "out of headroom"
                    : mood == 3 ? "good night" : "waiting for usage";
   int cy = oy + 11 * S + 14;
   drawCentered(word, cy, 2, mc);
