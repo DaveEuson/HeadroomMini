@@ -243,6 +243,9 @@ static void drawSplash(const char *line1, const char *line2) {
   drawCentered("HEADROOM", 130, 3, C_ACC);
   if (line1) drawCentered(line1, 170, 1, C_INK);
   if (line2) drawCentered(line2, 190, 1, C_MUTED);
+  char vbuf[16];
+  snprintf(vbuf, sizeof(vbuf), "v%s", FW_VERSION);
+  drawCentered(vbuf, 300, 1, C_MUTED);          // firmware version, bottom-center
 }
 
 // Read VBAT (GPIO5, 200K/100K divider -> x3) and map to a rough Li-ion %.
@@ -554,6 +557,12 @@ static void drawHistory() {
 static void drawMascot() {
   gfx->fillScreen(C_BG);
   drawUpdateBadge(222, 20);          // top-right (no battery on this screen)
+  char vbuf[16];
+  snprintf(vbuf, sizeof(vbuf), "v%s", FW_VERSION);
+  gfx->setTextSize(1);
+  gfx->setTextColor(C_MUTED);
+  gfx->setCursor(8, 12);             // firmware version, top-left
+  gfx->print(vbuf);
   const int S = 18, ox = (240 - 11 * S) / 2, oy = 44;
   for (int y = 0; y < 11; y++)
     for (int x = 0; x < 11; x++) {
