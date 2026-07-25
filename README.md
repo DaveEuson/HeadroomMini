@@ -8,6 +8,13 @@ Built on a **~$26 [Waveshare ESP32-S3-Touch-LCD-2](https://www.waveshare.com/esp
 one board with the screen, touch, battery header, and USB-C all on it. No
 Raspberry Pi, no Linux, no soldering.
 
+<p align="center">
+  <img src="docs/img/meters.jpg"   width="30%" alt="Meters — session and weekly usage bars">
+  <img src="docs/img/timer.jpg"    width="30%" alt="Timer — live countdown to the next reset">
+  <img src="docs/img/sprocket.jpg" width="30%" alt="Sprocket — the mascot reacting to headroom">
+</p>
+<p align="center"><sub>Meters · live reset countdown · Sprocket — tap to cycle</sub></p>
+
 ## Buy the hardware
 
 Everything runs on the one ~$26 board — no Raspberry Pi, no soldering.
