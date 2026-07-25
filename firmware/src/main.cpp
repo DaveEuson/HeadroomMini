@@ -514,6 +514,10 @@ static void loadHistory() {
   if (n == HIST_LEN) {
     histCount = prefs.getInt("histc", 0);
     histHead  = prefs.getInt("histh", 0);
+    // Clamp against a corrupted/hostile NVS so indexing stays in bounds.
+    if (histHead < 0 || histHead >= HIST_LEN) histHead = 0;
+    if (histCount < 0) histCount = 0;
+    if (histCount > HIST_LEN) histCount = HIST_LEN;
   } else {
     memset(histBuf, 0, HIST_LEN);
     histCount = histHead = 0;
@@ -793,12 +797,50 @@ static bool ctEqual(const String &a, const String &b) {
   return d == 0;
 }
 
-// Optional shared-secret gate for the machine endpoints (push / pair). Open
-// when no push token is set (zero-config default); once the owner sets one in
-// /settings, the companion must send a matching X-Push-Token header.
+// Shared-secret gate for every state-changing endpoint. Open when no push token
+// is set (zero-config default); once the owner sets one in /settings, callers
+// must prove it. Machines (the companion) send the X-Push-Token header; browser
+// forms send a matching `token` field. Because the token itself can only be
+// changed through this gate, an unauthenticated request can no longer clear it.
 static bool apiAuthed() {
   if (pushToken.length() == 0) return true;
-  return ctEqual(server->header("X-Push-Token"), pushToken);
+  if (ctEqual(server->header("X-Push-Token"), pushToken)) return true;
+  if (server->hasArg("token") && ctEqual(server->arg("token"), pushToken)) return true;
+  return false;
+}
+
+// 401 helper for the browser (form) endpoints.
+static void denyUnauthed() {
+  server->send(401, "text/html",
+               "<h2>Locked</h2><p>This board has a device token set. Add it in "
+               "the <b>device token</b> field to make changes. "
+               "<a href=/>back</a></p>");
+}
+
+// Minimal HTML-attribute escaping for any user-controlled string reflected into
+// a page (e.g. the ntfy topic), so it can't break out of an attribute or inject
+// markup.
+static String htmlEscape(const String &in) {
+  String o; o.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    if      (c == '&')  o += F("&amp;");
+    else if (c == '<')  o += F("&lt;");
+    else if (c == '>')  o += F("&gt;");
+    else if (c == '"')  o += F("&quot;");
+    else if (c == '\'') o += F("&#39;");
+    else                o += c;
+  }
+  return o;
+}
+
+// A "device token" input, rendered into config forms only when a token is set,
+// so the owner can authorize a save. Empty (no UX change) in the default,
+// zero-config state. Never echoes the token value.
+static String adminTokenField() {
+  if (pushToken.length() == 0) return String();
+  return F("<label>device token</label>"
+           "<input name=token type=password placeholder='required to save'>");
 }
 
 static void handleStatus() {
@@ -1449,11 +1491,13 @@ static void handleUpdatePage() {
   s += "</p>";
   if (!latest.length())
     s += F("<p class=muted>Couldn't reach GitHub to check right now.</p>");
-  else if (newer)
-    s += F("<form method=POST action=/update/install>"
-           "<button type=submit>Install update</button></form>"
+  else if (newer) {
+    s += F("<form method=POST action=/update/install>");
+    s += adminTokenField();
+    s += F("<button type=submit>Install update</button></form>"
            "<p class=muted>Takes about a minute. The board keeps your Wi-Fi and "
            "login, shows progress, and reboots itself. Keep it powered.</p>");
+  }
   else
     s += F("<p>&#10003; You're on the latest version.</p>");
   s += F("</div></body></html>");
@@ -1461,6 +1505,7 @@ static void handleUpdatePage() {
 }
 
 static void handleUpdateInstall() {
+  if (!apiAuthed()) { denyUnauthed(); return; }
   // Re-check that the published release is actually newer before flashing, so a
   // stale or hand-crafted POST can't trigger a needless re-flash or a downgrade.
   // (This is a browser-form endpoint, so it can't carry the X-Push-Token header;
@@ -1522,16 +1567,20 @@ static void handleConnectPage() {
       "paste the same login your computer's Claude Code uses, the two keep "
       "logging each other out. Best is a spare account just for the display.</div>"
       "<form method=POST action=/connect>"
-      "<textarea name=creds placeholder='{&quot;claudeAiOauth&quot;:{...}}'></textarea>"
-      "<button type=submit>Connect</button></form>");
-  if (selfHosted)
-    s += F("<form method=POST action=/disconnect>"
-           "<button style='background:#8a8577'>Disconnect</button></form>");
+      "<textarea name=creds placeholder='{&quot;claudeAiOauth&quot;:{...}}'></textarea>");
+  s += adminTokenField();
+  s += F("<button type=submit>Connect</button></form>");
+  if (selfHosted) {
+    s += F("<form method=POST action=/disconnect>");
+    s += adminTokenField();
+    s += F("<button style='background:#8a8577'>Disconnect</button></form>");
+  }
   s += F("</div></body></html>");
   server->send(200, "text/html", s);
 }
 
 static void handleConnectSave() {
+  if (!apiAuthed()) { denyUnauthed(); return; }
   String raw = server->arg("creds");
   JsonDocument doc;
   if (raw.length() == 0 || deserializeJson(doc, raw) ||
@@ -1569,6 +1618,7 @@ static void handlePair() {
 }
 
 static void handleDisconnect() {
+  if (!apiAuthed()) { denyUnauthed(); return; }
   accessTok = ""; refreshTok = ""; tokenExpMs = 0; selfHosted = false;
   plan[0] = 0;
   prefs.begin("headroom", false);
@@ -1604,7 +1654,7 @@ static void handleAlertsPage() {
       "<form method=POST action=/alerts>"
       "<label>ntfy topic</label>"
       "<input name=ntfy value='");
-  s += ntfyTopic;
+  s += htmlEscape(ntfyTopic);
   s += F("' placeholder='e.g. headroom-dave-9f3'>"
          "<label>Alert at what % used?</label>"
          "<input name=pct type=number min=50 max=100 value='");
@@ -1616,16 +1666,19 @@ static void handleAlertsPage() {
   s += poToken.length() ? F("(saved - leave blank to keep)") : F("");
   s += F("'><label>Pushover user key</label><input name=pouser placeholder='");
   s += poUser.length() ? F("(saved - leave blank to keep)") : F("");
-  s += F("'></details>"
-         "<button type=submit>Save</button></form>"
-         "<form method=POST action=/alerts/test style='margin-top:10px'>"
-         "<button style='background:#8a8577'>Send test alert</button></form>"
+  s += F("'></details>");
+  s += adminTokenField();
+  s += F("<button type=submit>Save</button></form>"
+         "<form method=POST action=/alerts/test style='margin-top:10px'>");
+  s += adminTokenField();
+  s += F("<button style='background:#8a8577'>Send test alert</button></form>"
          "<p class=muted>Recovery notice fires when it drops ~10% below the "
          "threshold.</p></div></body></html>");
   server->send(200, "text/html", s);
 }
 
 static void handleAlertsSave() {
+  if (!apiAuthed()) { denyUnauthed(); return; }
   ntfyTopic = server->arg("ntfy");
   ntfyTopic.trim();
   int p = server->arg("pct").toInt();
@@ -1640,6 +1693,7 @@ static void handleAlertsSave() {
 }
 
 static void handleAlertsTest() {
+  if (!apiAuthed()) { denyUnauthed(); return; }
   if (!alertsConfigured()) {
     server->send(200, "text/html",
                  "<p>Set a topic or keys first. <a href=/alerts>back</a></p>");
@@ -1747,14 +1801,16 @@ static void handleSettingsPage() {
          "border:1px solid rgba(61,57,41,.25);margin:4px 0 4px;box-sizing:border-box'>"
          "<p class=muted style='margin:0 0 12px'>Set a secret here and put the same "
          "value in the companion (<code>--token</code>) to lock feeding/pairing to "
-         "your computer. Type <b>off</b> to clear it.</p>"
-         "<button type=submit>Save</button></form>"
+         "your computer. Type <b>off</b> to clear it.</p>");
+  s += adminTokenField();
+  s += F("<button type=submit>Save</button></form>"
          "<p class=muted>Reset countdowns are timezone-independent. The default "
          "screen is always shown even if unchecked above.</p></div></body></html>");
   server->send(200, "text/html", s);
 }
 
 static void handleSettingsSave() {
+  if (!apiAuthed()) { denyUnauthed(); return; }
   prefs.begin("headroom", false);
   String tz = server->arg("tz");
   for (int i = 0; i < N_TZ; i++)

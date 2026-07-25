@@ -119,9 +119,18 @@ def read_creds():
             def save(oauth):
                 data = {"claudeAiOauth": oauth}
                 tmp = path + ".tmp"
-                with open(tmp, "w", encoding="utf-8") as fh:
+                # Create the temp file 0600 up front so the token is never
+                # briefly world-readable, then preserve that on the final file
+                # (os.replace would otherwise leave it at the umask default,
+                # downgrading Claude's original 0600 credentials file).
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
                     json.dump(data, fh)
                 os.replace(tmp, path)
+                try:
+                    os.chmod(path, 0o600)
+                except OSError:
+                    pass  # best effort (e.g. Windows)
             return creds, save
     except OSError:
         pass

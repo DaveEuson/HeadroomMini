@@ -1,0 +1,6 @@
+esp-web-tools 10.4.0 — vendored from npm (registry.npmjs.org) on 2026-07-25.
+Self-hosted instead of loaded from the unpkg CDN so the flasher can't be
+altered by a compromised/hijacked CDN asset while the page also handles the
+user's Wi-Fi credentials. To update: npm pack esp-web-tools@<ver>, copy
+package/dist/web/* here, and keep the folder complete (the entry lazy-loads
+its sibling chunks by relative path).

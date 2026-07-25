@@ -142,7 +142,10 @@
   </footer>
 </main>
 
+<!-- esp-web-tools is self-hosted (docs/vendor/esp-web-tools, v10.4.0) rather than
+     loaded from a CDN: this page collects the user's Wi-Fi credentials, so a
+     hijacked CDN script could exfiltrate them or flash malicious firmware. -->
 <script type="module"
-  src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
+  src="./vendor/esp-web-tools/install-button.js"></script>
 </body>
 </html>
