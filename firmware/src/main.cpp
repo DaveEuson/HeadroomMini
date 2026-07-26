@@ -145,6 +145,7 @@ static const int UI_SCREENS  = 5;
 static const char *SCREEN_NAMES[UI_SCREENS] = {"Meters", "Focus", "History", "Sprocket", "Timer"};
 static uint8_t   screenMask  = 0x1F;  // bit i set = screen i is in the rotation
 static time_t    timerResetAt = 0;    // reset time the Timer screen is counting to
+static int       mascotMood   = -1;   // last-drawn Sprocket mood, for the blink tick
 static int       defaultScreen = 0;   // screen shown at power-on
 static int       rotateSecs  = 0;     // 0 = tap-only; else auto-rotate every N s
 static unsigned long lastUserTouch = 0;  // for pausing auto-rotate after a tap
@@ -557,6 +558,24 @@ static void drawHistory() {
   drawCentered(buf, gy + gh + 16, 2, C_INK);
 }
 
+// Redraw just Sprocket's eyes (open, or closed for a blink) over the same cells
+// drawMascot uses, so the blink tick doesn't repaint the whole screen. Only the
+// open-eyed moods (happy / concerned / waiting) blink; asleep, panic and KO keep
+// their own fixed eyes.
+static void drawMascotEyes(bool closed) {
+  const int S = 18, ox = (240 - 11 * S) / 2, oy = 44;
+  int ey = oy + 5 * S, lx = ox + 3 * S, rx = ox + 7 * S;
+  gfx->fillRect(lx, ey, S, S, C_FACE);          // repaint the white behind the eye
+  gfx->fillRect(rx, ey, S, S, C_FACE);
+  if (closed) {
+    gfx->fillRect(lx, ey + 3 * S / 8, S, S / 4, C_OUT);   // a thin shut lid
+    gfx->fillRect(rx, ey + 3 * S / 8, S, S / 4, C_OUT);
+  } else {
+    gfx->fillRect(lx, ey, S, S, C_OUT);                   // open square eye
+    gfx->fillRect(rx, ey, S, S, C_OUT);
+  }
+}
+
 // Sprocket, the mascot. Reacts to remaining headroom (and the time of day).
 static void drawMascot() {
   gfx->fillScreen(C_BG);
@@ -591,6 +610,7 @@ static void drawMascot() {
   // 0 happy  1 concerned  2 panic  3 asleep  4 no-data  5 out/KO
   int mood = left < 0 ? 4 : night ? 3
            : left <= 0 ? 5 : left <= 15 ? 2 : left <= 30 ? 1 : 0;
+  mascotMood = mood;                 // let the blink tick know which eyes to draw
   uint16_t mc = mood == 0 ? C_ACC : mood == 1 ? C_WARN
               : (mood == 2 || mood == 5) ? C_CRIT : C_MUTED;
 
@@ -2244,6 +2264,27 @@ void loop() {
   if (uiScreen == 4 && !screenOff && timerResetAt && millis() - lastSec >= 1000) {
     lastSec = millis();
     drawTimerClock();
+  }
+  // Sprocket blinks now and then so he doesn't look frozen (open-eyed moods
+  // only). Redraws just the two eye cells, so no flicker.
+  static unsigned long nextBlink = 0, blinkEnd = 0;
+  bool canBlink = uiScreen == 3 && !screenOff &&
+                  (mascotMood == 0 || mascotMood == 1 || mascotMood == 4);
+  if (canBlink) {
+    unsigned long now = millis();
+    if (nextBlink == 0) nextBlink = now + 2800;
+    if (blinkEnd) {
+      if (now >= blinkEnd) {                 // eyes back open
+        drawMascotEyes(false);
+        blinkEnd = 0;
+        nextBlink = now + 2200 + (now % 2600);   // 2.2-4.8s, a little irregular
+      }
+    } else if (now >= nextBlink) {           // shut for a blink
+      drawMascotEyes(true);
+      blinkEnd = now + 130;
+    }
+  } else {
+    nextBlink = 0; blinkEnd = 0;             // reset when off the mascot screen
   }
   // Auto-rotate: advance to the next enabled screen every rotateSecs, but only
   // when more than one screen is enabled and you haven't touched it recently.
