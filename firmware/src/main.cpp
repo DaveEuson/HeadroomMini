@@ -151,8 +151,8 @@ static time_t    timerResetAt = 0;    // reset time the Timer screen is counting
 static int       mascotShownMood = -2; // mood the caption/screen is currently drawn for
 static int       mascotFrame  = 0;    // animation frame counter (Sprocket screen)
 static unsigned long lastActivityMs = 0;  // last time usage went UP (you're using Claude)
-static int       prevHeadlineUtil = -1;   // to detect an increase between polls
-static const unsigned long ACTIVE_WINDOW_MS = 12UL * 60 * 1000;  // "active" if used within 12 min
+static float     prevHeadlineUtil = -1;   // float, so a fractional-% climb still counts
+static const unsigned long ACTIVE_WINDOW_MS = 20UL * 60 * 1000;  // "active" if used within 20 min
 static int       defaultScreen = 0;   // screen shown at power-on
 static int       rotateSecs  = 0;     // 0 = tap-only; else auto-rotate every N s
 static unsigned long lastUserTouch = 0;  // for pausing auto-rotate after a tap
@@ -490,14 +490,18 @@ static void drawFocus() {
 }
 
 // Headline metric to trend: the session window if present, else the fullest.
-static int headlineUtil() {
-  int best = -1;
+// Float version (for exact trend detection) and a rounded one (for display).
+static float headlineUtilF() {
+  float best = -1;
   for (int i = 0; i < nWindows; i++) {
-    if (!strcmp(windows[i].key, "five_hour"))
-      return (int)(windows[i].utilization + 0.5f);
-    if ((int)windows[i].utilization > best) best = (int)windows[i].utilization;
+    if (!strcmp(windows[i].key, "five_hour")) return windows[i].utilization;
+    if (windows[i].utilization > best) best = windows[i].utilization;
   }
   return best;   // -1 if no data yet
+}
+static int headlineUtil() {
+  float f = headlineUtilF();
+  return f < 0 ? -1 : (int)(f + 0.5f);
 }
 
 static void sampleHistory() {
@@ -585,9 +589,10 @@ static int mascotMoodNow() {
 // Called after each usage update: a rise in utilization means tokens are being
 // spent right now, so the mascot wakes up and parties.
 static void noteUsageActivity() {
-  int u = headlineUtil();
+  float u = headlineUtilF();
   if (u >= 0) {
-    if (prevHeadlineUtil >= 0 && u > prevHeadlineUtil) lastActivityMs = millis();
+    // Any real upward move (even a fraction of a percent) means you're active.
+    if (prevHeadlineUtil >= 0 && u > prevHeadlineUtil + 0.01f) lastActivityMs = millis();
     prevHeadlineUtil = u;
   }
 }
