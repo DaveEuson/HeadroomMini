@@ -1,4 +1,5 @@
 // Headroom Mini — Claude usage meters on a Waveshare ESP32-S3-Touch-LCD-2.
+// Copyright (c) 2026 Dave Euson. Made with love in San Diego.
 //
 // v0 scope: join Wi-Fi (first boot: its own "Headroom-Setup" hotspot with a
 // phone setup page, like the Pi version), then speak the same HTTP API as the
@@ -2021,7 +2022,11 @@ static void handleRoot() {
          "you can't run the companion.</p></details></div>"
          "<p class=muted style='text-align:center'>");
   s += ip;
-  s += F(" &middot; headroom.local</p></body></html>");
+  s += F(" &middot; headroom.local</p>"
+         "<p class=muted style='text-align:center;font-size:.78rem;margin:2px 0 8px'>"
+         "Made by Dave Euson with <span style='color:#d97757'>&hearts;</span> "
+         "in San Diego &middot; &copy; 2026 Dave Euson</p>"
+         "</body></html>");
   server->send(200, "text/html", s);
 }
 
