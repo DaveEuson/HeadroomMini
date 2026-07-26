@@ -51,6 +51,9 @@ static Arduino_DataBus *bus =
 // rotation 2 = portrait 240x320 flipped 180° (USB-C connector at the top)
 static Arduino_GFX *gfx =
     new Arduino_ST7789(bus, LCD_RST, 2 /*rotation*/, true /*IPS*/, 240, 320);
+// Off-screen framebuffer (PSRAM) for the animated Sprocket screen: draw a whole
+// frame into RAM, then blit it in one pass so the animation never flickers.
+static Arduino_Canvas *mascotBuf = nullptr;
 
 // Claude night palette in RGB565 (macro provided by Arduino_GFX)
 static const uint16_t C_BG    = RGB565(0x26, 0x26, 0x24);
@@ -594,7 +597,6 @@ static void noteUsageActivity() {
 // per-frame tick stays cheap. Each mood has its own motion.
 static void drawSprocketAnim(int mood, int frame) {
   const int S = 18, ox = (240 - 11 * S) / 2, oy0 = 44;
-  gfx->fillRect(0, 28, 240, 226, C_BG);         // clear the animation band
 
   int bob = 0, shake = 0;
   if      (mood == 6) bob   = (frame % 4 < 2) ? -4 : 0;   // party: bounce
@@ -669,10 +671,19 @@ static void drawSprocketAnim(int mood, int frame) {
   }
 }
 
-// Full Sprocket screen: static chrome (version, badge) + caption/stats, then the
-// current animation frame. The loop's animation tick calls drawSprocketAnim on
-// its own for the in-between frames.
+// Full Sprocket screen, rendered into the off-screen buffer and blitted in one
+// pass (no flicker). Draw helpers all use the global `gfx`, so we point it at
+// the RAM canvas for the duration, then flush. Every animation frame is a full
+// redraw of this whole screen into the buffer.
 static void drawMascot() {
+  if (!mascotBuf) {                  // lazily allocate the framebuffer (PSRAM)
+    mascotBuf = new Arduino_Canvas(240, 320, gfx);
+    mascotBuf->begin(GFX_SKIP_OUTPUT_BEGIN);          // display is already begun
+    if (!mascotBuf->getFramebuffer()) { delete mascotBuf; mascotBuf = nullptr; }
+  }
+  Arduino_GFX *real = gfx;
+  if (mascotBuf) gfx = mascotBuf;    // route all drawing to the off-screen buffer
+
   gfx->fillScreen(C_BG);
   drawUpdateBadge(222, 20);          // top-right (no battery on this screen)
   char vbuf[16];
@@ -708,6 +719,8 @@ static void drawMascot() {
     if (buf[0]) drawCentered(buf, cy + 42, 1, C_MUTED);
   }
   drawSprocketAnim(mood, mascotFrame);
+
+  if (mascotBuf) { gfx = real; mascotBuf->flush(); }   // blit the finished frame
 }
 
 // Timer screen: one big countdown to the soonest reset, ticking every second.
@@ -2308,14 +2321,14 @@ void loop() {
     lastSec = millis();
     drawTimerClock();
   }
-  // Sprocket animates a few frames a second while his screen is up. A mood
-  // change does a full redraw (so the caption updates); otherwise just the body.
+  // Sprocket animates while his screen is up: advance a frame and redraw the
+  // whole screen into the off-screen buffer (drawMascot blits it in one pass,
+  // so there's no flicker).
   static unsigned long lastAnim = 0;
-  if (uiScreen == 3 && !screenOff && millis() - lastAnim >= 280) {
+  if (uiScreen == 3 && !screenOff && millis() - lastAnim >= 200) {
     lastAnim = millis();
-    int mood = mascotMoodNow();
-    if (mood != mascotShownMood) drawMascot();       // caption + body
-    else { mascotFrame++; drawSprocketAnim(mood, mascotFrame); }
+    mascotFrame++;
+    drawMascot();
   }
   // Auto-rotate: advance to the next enabled screen every rotateSecs, but only
   // when more than one screen is enabled and you haven't touched it recently.
