@@ -86,3 +86,8 @@ extension, open the `firmware/` folder, and hit **Upload**. Full runbook in
 The original, deluxe build — a Raspberry Pi Zero 2 W with a full web dashboard
 and the "Pip" mascot — lives in its own repo, **HeadroomZero**. This repo is the
 self-contained ESP32 appliance.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). Made by Dave Euson with love in San Diego.
+© 2026 Dave Euson.
