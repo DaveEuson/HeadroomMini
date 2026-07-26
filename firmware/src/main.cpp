@@ -145,7 +145,11 @@ static const int UI_SCREENS  = 5;
 static const char *SCREEN_NAMES[UI_SCREENS] = {"Meters", "Focus", "History", "Sprocket", "Timer"};
 static uint8_t   screenMask  = 0x1F;  // bit i set = screen i is in the rotation
 static time_t    timerResetAt = 0;    // reset time the Timer screen is counting to
-static int       mascotMood   = -1;   // last-drawn Sprocket mood, for the blink tick
+static int       mascotShownMood = -2; // mood the caption/screen is currently drawn for
+static int       mascotFrame  = 0;    // animation frame counter (Sprocket screen)
+static unsigned long lastActivityMs = 0;  // last time usage went UP (you're using Claude)
+static int       prevHeadlineUtil = -1;   // to detect an increase between polls
+static const unsigned long ACTIVE_WINDOW_MS = 12UL * 60 * 1000;  // "active" if used within 12 min
 static int       defaultScreen = 0;   // screen shown at power-on
 static int       rotateSecs  = 0;     // 0 = tap-only; else auto-rotate every N s
 static unsigned long lastUserTouch = 0;  // for pausing auto-rotate after a tap
@@ -558,35 +562,51 @@ static void drawHistory() {
   drawCentered(buf, gy + gh + 16, 2, C_INK);
 }
 
-// Redraw just Sprocket's eyes (open, or closed for a blink) over the same cells
-// drawMascot uses, so the blink tick doesn't repaint the whole screen. Only the
-// open-eyed moods (happy / concerned / waiting) blink; asleep, panic and KO keep
-// their own fixed eyes.
-static void drawMascotEyes(bool closed) {
-  const int S = 18, ox = (240 - 11 * S) / 2, oy = 44;
-  int ey = oy + 5 * S, lx = ox + 3 * S, rx = ox + 7 * S;
-  gfx->fillRect(lx, ey, S, S, C_FACE);          // repaint the white behind the eye
-  gfx->fillRect(rx, ey, S, S, C_FACE);
-  if (closed) {
-    gfx->fillRect(lx, ey + 3 * S / 8, S, S / 4, C_OUT);   // a thin shut lid
-    gfx->fillRect(rx, ey + 3 * S / 8, S, S / 4, C_OUT);
-  } else {
-    gfx->fillRect(lx, ey, S, S, C_OUT);                   // open square eye
-    gfx->fillRect(rx, ey, S, S, C_OUT);
+// --- Sprocket's mood is driven by activity + headroom ---
+// You're "active" if usage has climbed recently (you're burning tokens now).
+static bool mascotActive() {
+  return lastActivityMs && (millis() - lastActivityMs) < ACTIVE_WINDOW_MS;
+}
+
+// dead when out, panic when low, party while you're actively using it, asleep
+// when idle, and a waiting face before any data arrives.
+static int mascotMoodNow() {
+  int u = headlineUtil();
+  if (u < 0) return 4;                    // 4 = waiting
+  int left = 100 - u;
+  if (left <= 0)  return 5;               // 5 = dead / out
+  if (left <= 20) return 2;               // 2 = panic
+  return mascotActive() ? 6 : 3;          // 6 = party, 3 = asleep
+}
+
+// Called after each usage update: a rise in utilization means tokens are being
+// spent right now, so the mascot wakes up and parties.
+static void noteUsageActivity() {
+  int u = headlineUtil();
+  if (u >= 0) {
+    if (prevHeadlineUtil >= 0 && u > prevHeadlineUtil) lastActivityMs = millis();
+    prevHeadlineUtil = u;
   }
 }
 
-// Sprocket, the mascot. Reacts to remaining headroom (and the time of day).
-static void drawMascot() {
-  gfx->fillScreen(C_BG);
-  drawUpdateBadge(222, 20);          // top-right (no battery on this screen)
-  char vbuf[16];
-  snprintf(vbuf, sizeof(vbuf), "v%s", FW_VERSION);
-  gfx->setTextSize(1);
-  gfx->setTextColor(C_MUTED);
-  gfx->setCursor(8, 12);             // firmware version, top-left
-  gfx->print(vbuf);
-  const int S = 18, ox = (240 - 11 * S) / 2, oy = 44;
+// Draw the animated Sprocket for `mood` at animation `frame`. Repaints only the
+// band above the caption, so the caption/version/badge are left intact and the
+// per-frame tick stays cheap. Each mood has its own motion.
+static void drawSprocketAnim(int mood, int frame) {
+  const int S = 18, ox = (240 - 11 * S) / 2, oy0 = 44;
+  gfx->fillRect(0, 28, 240, 226, C_BG);         // clear the animation band
+
+  int bob = 0, shake = 0;
+  if      (mood == 6) bob   = (frame % 4 < 2) ? -4 : 0;   // party: bounce
+  else if (mood == 3) bob   = (frame % 8 < 4) ? 0 : 3;    // sleep: slow breathing
+  else if (mood == 2) shake = (frame % 2) ? 3 : -3;       // panic: jitter
+  else if (mood == 5) bob   = 4;                          // dead: slumped
+  int oy = oy0 + bob, px = ox + shake;
+
+  uint16_t mc   = (mood == 6) ? C_ACC : (mood == 2 || mood == 5) ? C_CRIT : C_MUTED;
+  uint16_t ball = (mood == 5 || mood == 3) ? C_MUTED : mc;
+  if (mood == 6) ball = (frame % 3 == 0) ? C_ACC : (frame % 3 == 1) ? C_WARN : C_SPRK;
+
   for (int y = 0; y < 11; y++)
     for (int x = 0; x < 11; x++) {
       uint16_t c;
@@ -597,76 +617,97 @@ static void drawMascot() {
         case 'S': c = C_SPRK_D; break;
         default:  continue;
       }
-      gfx->fillRect(ox + x * S, oy + y * S, S, S, c);
+      gfx->fillRect(px + x * S, oy + y * S, S, S, c);
     }
+  gfx->fillRect(px + 3 * S, oy + S, S, S, ball);   // antenna balls
+  gfx->fillRect(px + 7 * S, oy + S, S, S, ball);
 
-  // mood from the most-constrained window + time of day
-  int idx = -1;
-  for (int i = 0; i < nWindows; i++)
-    if (idx < 0 || windows[i].utilization > windows[idx].utilization) idx = i;
-  int u = idx < 0 ? -1 : (int)(windows[idx].utilization + 0.5f);
-  int left = u < 0 ? -1 : 100 - u;
-  bool night = nightNow();
-  // 0 happy  1 concerned  2 panic  3 asleep  4 no-data  5 out/KO
-  int mood = left < 0 ? 4 : night ? 3
-           : left <= 0 ? 5 : left <= 15 ? 2 : left <= 30 ? 1 : 0;
-  mascotMood = mood;                 // let the blink tick know which eyes to draw
-  uint16_t mc = mood == 0 ? C_ACC : mood == 1 ? C_WARN
-              : (mood == 2 || mood == 5) ? C_CRIT : C_MUTED;
+  int ey = oy + 5 * S, lx = px + 3 * S, rx = px + 7 * S;
+  int my = oy + 7 * S, mx = px + 4 * S;
 
-  // antenna balls glow with mood, but go dark when out or asleep
-  uint16_t ball = (mood == 5 || mood == 3) ? C_MUTED : mc;
-  gfx->fillRect(ox + 3 * S, oy + S, S, S, ball);
-  gfx->fillRect(ox + 7 * S, oy + S, S, S, ball);
-
-  int ey = oy + 5 * S, lx = ox + 3 * S, rx = ox + 7 * S;   // eyes
-  if (mood == 3) {                                    // asleep - closed
+  if (mood == 3) {                                 // ASLEEP: shut eyes + rising Zzz
     gfx->fillRect(lx, ey + S / 2, S, S / 4, C_OUT);
     gfx->fillRect(rx, ey + S / 2, S, S / 4, C_OUT);
-  } else if (mood == 5) {                             // out - dead "X" eyes
+    gfx->fillRect(mx + S, my + S / 3, S, S / 3, C_OUT);
+    int n = 1 + (frame % 3);                       // z … z z … z z z …
+    gfx->setTextColor(C_MUTED);
+    gfx->setTextSize(1);
+    for (int i = 0; i < n; i++) {
+      gfx->setCursor(px + 9 * S + i * 6, oy + S - i * 9);
+      gfx->print("z");
+    }
+  } else if (mood == 6) {                          // PARTY: grin + falling confetti
+    gfx->fillRect(lx, ey, S, S, C_OUT);
+    gfx->fillRect(rx, ey, S, S, C_OUT);
+    gfx->fillRect(mx, my + S / 3, 3 * S, S / 2, C_OUT);
+    for (int i = 0; i < 9; i++) {
+      int cxp = 12 + (i * 71) % 214;
+      int cyp = 30 + ((i * 37 + frame * 12) % 216);
+      uint16_t cc = (i % 3 == 0) ? C_ACC : (i % 3 == 1) ? C_WARN : C_SPRK;
+      gfx->fillRect(cxp, cyp, 5, 5, cc);
+    }
+  } else if (mood == 2) {                          // PANIC: wide eyes + dripping sweat
+    gfx->fillRect(lx, ey - S / 4, S, S + S / 4, C_FACE);
+    gfx->fillRect(rx, ey - S / 4, S, S + S / 4, C_FACE);
+    gfx->fillRect(lx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
+    gfx->fillRect(rx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
+    gfx->fillRect(mx + S, my, S, S, C_OUT);
+    int dy = (frame % 4) * 7;
+    gfx->fillRect(rx + S + S / 4, ey - S / 3 + dy, S / 3, S / 2, C_SPRK);
+  } else if (mood == 5) {                          // DEAD: X eyes, KO mouth (still)
     for (int t = -1; t <= 1; t++) {
       gfx->drawLine(lx, ey + t, lx + S - 1, ey + S - 1 + t, C_OUT);
       gfx->drawLine(lx + S - 1, ey + t, lx, ey + S - 1 + t, C_OUT);
       gfx->drawLine(rx, ey + t, rx + S - 1, ey + S - 1 + t, C_OUT);
       gfx->drawLine(rx + S - 1, ey + t, rx, ey + S - 1 + t, C_OUT);
     }
-  } else if (mood == 2) {                             // panic - wide eyes + sweat
-    gfx->fillRect(lx, ey - S / 4, S, S + S / 4, C_FACE);
-    gfx->fillRect(rx, ey - S / 4, S, S + S / 4, C_FACE);
-    gfx->fillRect(lx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
-    gfx->fillRect(rx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
-    gfx->fillRect(rx + S + S / 3, ey - S / 3, S / 3, S / 2, C_SPRK);   // sweat bead
-  } else {                                            // open
+    gfx->fillRect(mx + S / 2, my + S / 2, 2 * S, S / 5, C_OUT);
+  } else {                                         // WAITING: open eyes, flat mouth
     gfx->fillRect(lx, ey, S, S, C_OUT);
     gfx->fillRect(rx, ey, S, S, C_OUT);
+    gfx->fillRect(mx, my + S / 2, 3 * S, S / 5, C_OUT);
   }
+}
 
-  int my = oy + 7 * S, mx = ox + 4 * S;               // mouth
-  if (mood == 0)      gfx->fillRect(mx, my + S / 3, 3 * S, S / 2, C_OUT);   // smile
-  else if (mood == 1) gfx->fillRect(mx + S, my + S / 4, S, S / 2, C_OUT);   // worried o
-  else if (mood == 2) gfx->fillRect(mx + S, my, S, S, C_OUT);               // gasping O
-  else if (mood == 5) gfx->fillRect(mx + S / 2, my + S / 2, 2 * S, S / 5, C_OUT); // KO flat
-  else if (mood == 3) gfx->fillRect(mx + S, my + S / 3, S, S / 3, C_OUT);   // sleepy
-  else                gfx->fillRect(mx, my + S / 2, 3 * S, S / 5, C_OUT);   // flat
+// Full Sprocket screen: static chrome (version, badge) + caption/stats, then the
+// current animation frame. The loop's animation tick calls drawSprocketAnim on
+// its own for the in-between frames.
+static void drawMascot() {
+  gfx->fillScreen(C_BG);
+  drawUpdateBadge(222, 20);          // top-right (no battery on this screen)
+  char vbuf[16];
+  snprintf(vbuf, sizeof(vbuf), "v%s", FW_VERSION);
+  gfx->setTextSize(1);
+  gfx->setTextColor(C_MUTED);
+  gfx->setCursor(8, 12);             // firmware version, top-left
+  gfx->print(vbuf);
 
-  if (mood == 3) drawCentered("z  z  z", oy - 4, 2, C_MUTED);
-
-  const char *word = mood == 0 ? "plenty of headroom"
-                   : mood == 1 ? "getting low"
-                   : mood == 2 ? "running on fumes"
-                   : mood == 5 ? "out of headroom"
-                   : mood == 3 ? "good night" : "waiting for usage";
-  int cy = oy + 11 * S + 14;
+  int mood = mascotMoodNow();
+  mascotShownMood = mood;
+  uint16_t mc = (mood == 6) ? C_ACC : (mood == 2 || mood == 5) ? C_CRIT : C_MUTED;
+  const char *word = mood == 6 ? "on a roll!"
+                   : mood == 2 ? "running low!"
+                   : mood == 5 ? "out of tokens"
+                   : mood == 3 ? "resting - no usage" : "waiting for usage";
+  const int S = 18;
+  int cy = 44 + 11 * S + 14;
   drawCentered(word, cy, 2, mc);
-  if (u >= 0) {
+
+  // Stat line: the fullest window's %, plus its reset countdown.
+  int idx = -1;
+  for (int i = 0; i < nWindows; i++)
+    if (idx < 0 || windows[i].utilization > windows[idx].utilization) idx = i;
+  if (idx >= 0) {
+    int u = (int)(windows[idx].utilization + 0.5f);
+    int shown = showUsed ? u : 100 - u;
     char buf[40];
-    int shown = showUsed ? u : left;
     snprintf(buf, sizeof(buf), "%s %d%% %s", windows[idx].label, shown,
              showUsed ? "used" : "left");
     drawCentered(buf, cy + 26, 1, C_MUTED);
     fmtCountdown(windows[idx].resets_at, buf, sizeof(buf));
     if (buf[0]) drawCentered(buf, cy + 42, 1, C_MUTED);
   }
+  drawSprocketAnim(mood, mascotFrame);
 }
 
 // Timer screen: one big countdown to the soonest reset, ticking every second.
@@ -919,6 +960,7 @@ static void handlePush() {
   strlcpy(plan, doc["plan"] | "", sizeof(plan));
   lastPushMs = millis();
   sendJson(200, "{\"ok\":true}");
+  noteUsageActivity();
   checkAlerts();
   drawScreen();
 }
@@ -1389,6 +1431,7 @@ static bool fetchUsage(bool allowRefresh) {
   pollStatus[0] = 0;    // success -> clear any prior error
   pollBackoffMs = 0;    // and drop back to the normal poll cadence
   lastPushMs = millis();
+  noteUsageActivity();
   checkAlerts();
   drawScreen();
   return true;
@@ -2265,26 +2308,14 @@ void loop() {
     lastSec = millis();
     drawTimerClock();
   }
-  // Sprocket blinks now and then so he doesn't look frozen (open-eyed moods
-  // only). Redraws just the two eye cells, so no flicker.
-  static unsigned long nextBlink = 0, blinkEnd = 0;
-  bool canBlink = uiScreen == 3 && !screenOff &&
-                  (mascotMood == 0 || mascotMood == 1 || mascotMood == 4);
-  if (canBlink) {
-    unsigned long now = millis();
-    if (nextBlink == 0) nextBlink = now + 2800;
-    if (blinkEnd) {
-      if (now >= blinkEnd) {                 // eyes back open
-        drawMascotEyes(false);
-        blinkEnd = 0;
-        nextBlink = now + 2200 + (now % 2600);   // 2.2-4.8s, a little irregular
-      }
-    } else if (now >= nextBlink) {           // shut for a blink
-      drawMascotEyes(true);
-      blinkEnd = now + 130;
-    }
-  } else {
-    nextBlink = 0; blinkEnd = 0;             // reset when off the mascot screen
+  // Sprocket animates a few frames a second while his screen is up. A mood
+  // change does a full redraw (so the caption updates); otherwise just the body.
+  static unsigned long lastAnim = 0;
+  if (uiScreen == 3 && !screenOff && millis() - lastAnim >= 280) {
+    lastAnim = millis();
+    int mood = mascotMoodNow();
+    if (mood != mascotShownMood) drawMascot();       // caption + body
+    else { mascotFrame++; drawSprocketAnim(mood, mascotFrame); }
   }
   // Auto-rotate: advance to the next enabled screen every rotateSecs, but only
   // when more than one screen is enabled and you haven't touched it recently.
