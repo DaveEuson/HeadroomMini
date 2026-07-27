@@ -56,14 +56,39 @@ COLORS = {"green": (94, 170, 100), "amber": (230, 164, 23),
           "red": (221, 77, 77), "grey": (140, 140, 140)}
 
 
+# Sprocket, the mascot — same 11x11 sprite the board draws. The two antenna
+# balls are tinted by state (green feeding / amber busy / red stuck) so the
+# tray icon shows status at a glance while still reading as the mascot.
+SPROCKET_SPRITE = ["...K...K...", "...B...B...", "..KKKKKKK..", ".KBBBBBBBK.",
+                   ".KWWWWWWWK.", ".KWWWWWWWK.", ".KWWWWWWWK.", ".KWWWWWWWK.",
+                   ".KBSBBBSBK.", ".KBBBBBBBK.", "..KK...KK.."]
+_SPRK = {"K": (26, 24, 22), "W": (250, 247, 239),
+         "B": (95, 131, 161), "S": (63, 95, 122)}
+
+
 def make_icon(color):
-    """A little gauge glyph tinted by state."""
+    """Draw Sprocket, tinted at the antennas by feed state."""
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([6, 6, 58, 58], radius=16, fill=(38, 38, 36, 255))
-    c = COLORS.get(color, COLORS["grey"])
-    d.ellipse([17, 17, 47, 47], outline=c, width=5)
-    d.ellipse([28, 28, 36, 36], fill=c)
+    d.rounded_rectangle([2, 2, 61, 61], radius=14, fill=(38, 38, 36, 255))
+    status = COLORS.get(color, COLORS["grey"])
+    U = 5                       # cell size; 11*5=55, centred in 64
+    pad = (64 - 11 * U) // 2
+
+    def cell(cx, cy, rgb):
+        x0, y0 = pad + cx * U, pad + cy * U
+        d.rectangle([x0, y0, x0 + U - 1, y0 + U - 1], fill=rgb)
+
+    for y, row in enumerate(SPROCKET_SPRITE):
+        for x, ch in enumerate(row):
+            if ch in _SPRK:
+                cell(x, y, _SPRK[ch])
+    cell(3, 5, _SPRK["K"]); cell(7, 5, _SPRK["K"])            # eyes
+    cell(4, 7, _SPRK["K"]); cell(5, 7, _SPRK["K"]); cell(6, 7, _SPRK["K"])  # mouth
+    # antenna balls in the status colour, a touch larger so they read when small
+    for bx in (3, 7):
+        cx, cy = pad + bx * U + U // 2, pad + 1 * U + U // 2
+        d.ellipse([cx - U, cy - U, cx + U, cy + U], fill=status)
     return img
 
 

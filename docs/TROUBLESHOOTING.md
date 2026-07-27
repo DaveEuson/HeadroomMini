@@ -146,12 +146,35 @@ new one exits to avoid double-polling.
 ## The companion says it can't find your Claude login
 
 The companion reuses the login already on your computer — there's **no separate
-sign-in**. It reads:
+sign-in**. It reads the **Claude Code CLI's** login:
 - **macOS:** the Keychain item `Claude Code-credentials`
 - **Windows/Linux:** `~/.claude/.credentials.json`
 
-If it can't find one, make sure you're **signed in to Claude Code** on this
-computer (run `claude` once and log in), then try again.
+> **Being signed into the Claude _desktop app_ or _claude.ai_ in a browser is not
+> enough** — the companion specifically needs the **Claude Code CLI** signed in
+> on this computer.
+
+Fix: install/sign in to the Claude Code CLI, then try again:
+```
+claude          # follow the login prompt, or type /login
+claude /usage   # should print your real usage
+```
+
+## The board shows the wrong numbers (e.g. stuck near 100%)
+
+**What it means:** the companion is running, but its output says
+`pushed [estimated]:` instead of `pushed [LIVE]:`. It can't read your real Claude
+usage, so it's **guessing from local logs** — and the guess is usually wrong
+(often pinned near 100%).
+
+**Why:** same root cause as above — the **Claude Code CLI isn't signed in** (or
+its token went stale), so there's no real usage to read.
+
+**Fix:**
+1. Sign in to the Claude Code CLI: `claude` (then `/login` if prompted). Confirm
+   with `claude /usage`.
+2. Restart the companion and watch its output — you want **`pushed [LIVE]:`**,
+   not `pushed [estimated]:`. Once it says `[LIVE]`, the board matches reality.
 
 ---
 
