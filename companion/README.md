@@ -119,8 +119,16 @@ timing and usage amounts are still accurate, just the % is a guess.
 **Requires Claude Code signed in on this computer** for live numbers. If Sparko's
 "Fuel" widget works for you, you already have this.
 
+## Troubleshooting
+
+Hitting "login expired", a 404 / "couldn't reach the board", "rate limited", or
+"another companion is already running"? See the
+[troubleshooting guide](../docs/TROUBLESHOOTING.md) — most issues come down to
+the board being reached at the wrong address (e.g. two devices sharing
+`headroom.local`) or a shared-account login expiring.
+
 ## Security
 
-If your Pi's `config.json` sets a `push_token`, pass the same value with
+If your board's `config.json` sets a `push_token`, pass the same value with
 `--token` (or in the config file). Then only your companion can post data to
-the Pi. On a home network it's optional but nice to have.
+the board. On a home network it's optional but nice to have.
