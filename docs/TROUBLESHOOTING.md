@@ -1,0 +1,169 @@
+# Troubleshooting
+
+Quick fixes for the most common snags. Find your symptom below.
+
+If you're stuck, most problems come down to one of two things: **the board can't
+be reached on the network**, or **the login it's using has gone stale**.
+
+---
+
+## First, which mode are you in?
+
+There are two ways to feed the board its usage. Knowing which you're using
+explains most issues:
+
+- **Push mode (recommended).** You run the companion app on your computer and
+  leave it running. It reads your existing Claude login and *pushes* the numbers
+  to the board. **No login is stored on the board, so nothing on it can expire.**
+  This is the mode most people should use.
+- **Self-contained / paired mode (advanced).** You ran the companion once with
+  `--pair`. The board holds a copy of your Claude login and polls Anthropic
+  itself, with no computer running. Powerful, but the login can expire (see
+  below), so only use it with a **spare Claude account**.
+
+When in doubt, use **push mode**: just run the companion with no arguments.
+
+---
+
+## The board says "login expired – re-pair"
+
+**What it means:** you're in paired mode, and the login stored on the board
+stopped working.
+
+**Why it happens:** you almost certainly paired the board with the **same Claude
+account your computer's Claude Code uses**. Claude rotates login tokens on use,
+so your computer and the board keep invalidating each other's copy. Within an
+hour or so, the board's copy dies.
+
+**Fixes (pick one):**
+1. **Switch to push mode (easiest, permanent).** Stop pairing and just run the
+   companion normally — it pushes usage and nothing on the board can expire:
+   ```
+   python companion.py
+   ```
+   Leave it running (or let it start with your computer).
+2. **Pair a spare Claude account.** Use a second/free Claude account for the
+   board so your main login never rotates its token out. Then re-pair:
+   ```
+   python companion.py --pair
+   ```
+
+---
+
+## No pairing code appears on the board's screen
+
+**If you're on firmware older than 1.3.0:** update — an early build could repaint
+the code off-screen before you saw it. Re-flash from the setup page.
+
+**If you're on 1.3.0+ and still see no code:** the companion is talking to the
+**wrong device** (see the 404 section below) or the board isn't on your Wi-Fi
+(see "board not found"). The code only appears when the companion successfully
+reaches *this* board's `/api/pair/start`.
+
+---
+
+## "Couldn't reach the board … HTTP Error 404"
+
+**What it means:** the companion found *a* device at `headroom.local`, but it
+wasn't your ESP32 board — so the pairing endpoint didn't exist there.
+
+**The usual cause: two devices answering to the same name.** If you also run the
+older **Raspberry Pi ClaudeTracker**, both it and the ESP32 Mini advertise
+themselves as `headroom.local`. Your computer resolves whichever answers first,
+and if the Pi wins, you get a 404 (it has no pairing endpoint) — and both
+devices polling the same Claude account will also **rate-limit** you.
+
+**Fixes:**
+1. **Turn off the device you're not using.** If the old Pi is still plugged in
+   and you've moved to the Mini, unplug the Pi. Then re-pair.
+2. **Point the companion straight at the right board**, bypassing discovery:
+   ```
+   python companion.py --pi http://<board-ip>:8080 --pair
+   ```
+   Find the board's IP from your router's device list. To see which device
+   `headroom.local` currently resolves to:
+   ```
+   ping headroom.local
+   ```
+
+---
+
+## The board shows "rate limited – waiting ~Xm"
+
+**What it means:** Anthropic returned HTTP 429 — too many usage requests in a
+short window. The board backs off automatically and recovers on its own.
+
+**Why it happens:** usually **more than one thing polling the same Claude
+account** — e.g. the ESP32 *and* an old Pi both self-hosting, or a stray second
+companion. Your own heavy Claude use can contribute too.
+
+**Fixes:**
+- Make sure only **one** device is self-hosting on a given account (turn off the
+  extra one), or move to **push mode** so only the companion talks to Anthropic.
+- Then just wait out the countdown — it clears itself.
+
+---
+
+## "Another Headroom companion is already running"
+
+**What it means:** a companion process is already running on this computer
+(often one that started with Windows/macOS login). Only one should run, so the
+new one exits to avoid double-polling.
+
+**Fixes:**
+- If you *want* the already-running one, do nothing — it's working.
+- To run a fresh one instead, stop the existing process first:
+  - **Windows (PowerShell):**
+    ```powershell
+    Get-NetTCPConnection -LocalPort 47823 -ErrorAction SilentlyContinue |
+      ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+    ```
+  - **macOS/Linux:**
+    ```
+    lsof -ti tcp:47823 | xargs kill
+    ```
+  - Or just reboot the computer.
+- To stop it auto-starting with your computer: `python companion.py --uninstall`.
+
+---
+
+## The companion can't find the board at all
+
+**Checklist:**
+1. The board and computer are on the **same Wi-Fi** (not a guest network / VPN).
+2. The board's screen shows usage or a status screen — not the **"Set me up"**
+   Wi-Fi setup screen. If it's in setup mode, reconnect it to Wi-Fi (open the
+   setup page and use "Connect to Wi-Fi", or join `Headroom-Setup` and pick your
+   network).
+3. Still nothing? Point the companion straight at the board:
+   ```
+   python companion.py --pi http://<board-ip>:8080
+   ```
+   Get the IP from your router's device list.
+
+---
+
+## The companion says it can't find your Claude login
+
+The companion reuses the login already on your computer — there's **no separate
+sign-in**. It reads:
+- **macOS:** the Keychain item `Claude Code-credentials`
+- **Windows/Linux:** `~/.claude/.credentials.json`
+
+If it can't find one, make sure you're **signed in to Claude Code** on this
+computer (run `claude` once and log in), then try again.
+
+---
+
+## Meters are blank / "waiting for usage data"
+
+The board is on Wi-Fi but hasn't received usage yet.
+- **Push mode:** make sure the companion is running (see the sections above).
+- **Paired mode:** give it a minute to poll; if it stays blank, check for a
+  "login expired" or "rate limited" message and follow those sections.
+
+---
+
+Still stuck? Open an issue at
+<https://github.com/DaveEuson/HeadroomMini/issues> with what the board's screen
+shows and what the companion prints.

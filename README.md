@@ -82,14 +82,29 @@ No tools, no command line:
 Designed for a trusted home or office network. Details and threat model in
 [`docs/HARDENING.md`](docs/HARDENING.md).
 
+## Troubleshooting
+
+Full guide: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md). The common ones:
+
+- **"Login expired – re-pair"** — you paired the board with the *same* Claude
+  account your computer uses, and the two rotate each other's token. Use **push
+  mode** (run the companion, no `--pair`) or pair a **spare account**.
+- **"Couldn't reach the board" / 404, or no pairing code** — usually two devices
+  answering to `headroom.local` (e.g. an old Pi still running). Turn off the one
+  you're not using, or point the companion straight at the board with
+  `--pi http://<board-ip>:8080`.
+- **"Rate limited"** — more than one device polling the same account. Leave one
+  running and wait out the countdown.
+
 ## Repo layout
 
 - **`firmware/`** — the ESP32 firmware (PlatformIO). Board pinout, day-1
   runbook, and roadmap in [`firmware/README.md`](firmware/README.md).
 - **`companion/`** — the desktop app that feeds the board. See
   [`companion/README.md`](companion/README.md).
-- **`docs/`** — the browser-flasher setup page (served by GitHub Pages) and the
-  release checklist ([`docs/RELEASE.md`](docs/RELEASE.md)).
+- **`docs/`** — the browser-flasher setup page (served by GitHub Pages), the
+  [troubleshooting guide](docs/TROUBLESHOOTING.md), and the release checklist
+  ([`docs/RELEASE.md`](docs/RELEASE.md)).
 
 ## Build from source (developers only)
 
