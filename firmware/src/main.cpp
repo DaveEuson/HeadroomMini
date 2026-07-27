@@ -29,6 +29,8 @@
 #include "root_cas.h"
 #include <mbedtls/md.h>
 #include <esp_random.h>
+#include <mbedtls/pk.h>
+#include "ota_pubkey.h"
 
 // TLS trust for every outbound HTTPS call. By default the board verifies server
 // certificates against a curated set of public root CAs (root_cas.h), so a MITM
@@ -112,7 +114,7 @@ static bool apMode = false;
 static const char *AP_SSID = "Headroom-Setup";
 static const char *AP_PSK  = "headroom";
 static const int   API_PORT = 8080;   // what the companion probes
-static const char *FW_VERSION = "1.2.2";
+static const char *FW_VERSION = "1.3.0";
 
 // Phase 2 — self-contained: poll Anthropic's usage endpoint directly, using an
 // OAuth login pasted once via /connect. Same contract the companion uses.
@@ -120,12 +122,14 @@ static const char *CLIENT_ID   = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 static const char *REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
 static const char *USAGE_URL   = "https://api.anthropic.com/api/oauth/usage";
 static const char *OAUTH_BETA  = "oauth-2025-04-20";
-static const char *UA          = "Headroom-Mini/1.2.2";
+static const char *UA          = "Headroom-Mini/1.3.0";
 // OTA self-update (over-the-air from the GitHub release)
 static const char *RELEASES_API =
     "https://api.github.com/repos/DaveEuson/HeadroomMini/releases/latest";
 static const char *APP_BIN_URL =
     "https://github.com/DaveEuson/HeadroomMini/releases/latest/download/headroom-mini-app.bin";
+static const char *APP_SIG_URL =
+    "https://github.com/DaveEuson/HeadroomMini/releases/latest/download/headroom-mini-app.bin.sig";
 static const unsigned long POLL_INTERVAL_MS = 5UL * 60UL * 1000UL;
 static unsigned long pollBackoffMs = 0;   // extra wait after a 429, exponential
 
@@ -1546,9 +1550,45 @@ static void drawUpdateProgress(int pct) {
   drawCentered("keep it powered", 244, 1, C_MUTED);
 }
 
-// Download the app image straight into the inactive OTA slot. The running
-// firmware is never overwritten, so a failed download just leaves us as-is.
+// Fetch the detached ECDSA signature for the app image into `out`.
+static bool fetchSig(uint8_t *out, size_t cap, size_t *outLen) {
+  WiFiClientSecure client;
+  tlsTrust(client);
+  HTTPClient https;
+  https.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+  if (!https.begin(client, APP_SIG_URL)) return false;
+  https.addHeader("User-Agent", UA);
+  int code = https.GET();
+  int len = (code == 200) ? https.getSize() : -1;
+  if (len <= 0 || (size_t)len > cap) { https.end(); return false; }
+  int got = https.getStreamPtr()->readBytes(out, len);
+  https.end();
+  if (got != len) return false;
+  *outLen = (size_t)len;
+  return true;
+}
+
+// Verify a SHA-256 image hash against OTA_PUBKEY using its detached signature.
+static bool otaSignatureValid(const uint8_t *hash, const uint8_t *sig, size_t sigLen) {
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+  int rc = mbedtls_pk_parse_public_key(&pk, (const uint8_t *)OTA_PUBKEY,
+                                       strlen(OTA_PUBKEY) + 1);
+  if (rc == 0)
+    rc = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, hash, 32, sig, sigLen);
+  mbedtls_pk_free(&pk);
+  return rc == 0;
+}
+
+// Download the app image into the inactive OTA slot, hashing as it streams, and
+// only mark it bootable if its signature verifies against the embedded public
+// key. The running firmware is never overwritten, so a failed or forged
+// download just leaves us as-is. No valid signature -> refuse (fail closed).
 static bool doOTA() {
+  uint8_t sig[128];
+  size_t sigLen = 0;
+  if (!fetchSig(sig, sizeof(sig), &sigLen)) return false;   // unsigned -> refuse
+
   WiFiClientSecure client;
   tlsTrust(client);
   HTTPClient https;
@@ -1560,12 +1600,45 @@ static bool doOTA() {
   int len = https.getSize();
   if (len <= 0) { https.end(); return false; }
   if (!Update.begin((size_t)len)) { https.end(); return false; }
-  Update.onProgress([](size_t done, size_t total) {
-    drawUpdateProgress(total ? (int)(done * 100 / total) : 0);
-  });
-  size_t written = Update.writeStream(*https.getStreamPtr());
+
+  mbedtls_md_context_t md;
+  mbedtls_md_init(&md);
+  mbedtls_md_setup(&md, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0);
+  mbedtls_md_starts(&md);
+
+  WiFiClient *stream = https.getStreamPtr();
+  uint8_t buf[1024];
+  int done = 0;
+  unsigned long lastData = millis();
+  while (done < len) {
+    size_t avail = stream->available();
+    if (avail) {
+      int want = len - done;
+      if (want > (int)sizeof(buf)) want = sizeof(buf);
+      if ((int)avail < want) want = (int)avail;
+      int n = stream->readBytes(buf, want);
+      if (n <= 0) break;
+      if (Update.write(buf, n) != (size_t)n) break;
+      mbedtls_md_update(&md, buf, n);
+      done += n;
+      drawUpdateProgress((int)((long)done * 100 / len));
+      lastData = millis();
+    } else if (!https.connected() || millis() - lastData > 15000) {
+      break;                                        // stalled
+    } else {
+      delay(2);
+    }
+  }
   https.end();
-  if (written != (size_t)len) { Update.abort(); return false; }
+
+  uint8_t hash[32];
+  mbedtls_md_finish(&md, hash);
+  mbedtls_md_free(&md);
+
+  if (done != len || !otaSignatureValid(hash, sig, sigLen)) {
+    Update.abort();
+    return false;
+  }
   return Update.end(true);   // true = mark the new slot bootable
 }
 

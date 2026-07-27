@@ -100,6 +100,27 @@ jobs:
             0x8000  "$BUILD/partitions.bin" \
             0xe000  "$BOOT_APP0" \
             0x10000 "$BUILD/firmware.bin"
+      - name: Sign the OTA app image (C2)
+        working-directory: firmware
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          # The board verifies this signature against its embedded public key
+          # before flashing an OTA image. Signature-checking firmware refuses an
+          # unsigned image, so a release MUST carry a valid .sig — hard-fail if
+          # the signing key isn't configured rather than ship an un-updatable build.
+          if [ -z "$OTA_SIGNING_KEY" ]; then
+            echo "::error::OTA_SIGNING_KEY secret is not set. Add the EC P-256"
+            echo "::error::private key as a repo secret before tagging a release."
+            exit 1
+          fi
+          printf '%s\n' "$OTA_SIGNING_KEY" > ota_priv.pem
+          openssl dgst -sha256 -sign ota_priv.pem \
+            -out out/headroom-mini-app.bin.sig out/headroom-mini-app.bin
+          openssl dgst -sha256 -verify <(openssl ec -in ota_priv.pem -pubout 2>/dev/null) \
+            -signature out/headroom-mini-app.bin.sig out/headroom-mini-app.bin
+          shred -u ota_priv.pem 2>/dev/null || rm -f ota_priv.pem
+          ls -l out/headroom-mini-app.bin.sig
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-images

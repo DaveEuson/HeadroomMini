@@ -30,21 +30,45 @@ can't capture the Claude OAuth tokens or feed a spoofed usage/OTA response.
   update adds the new root; the `-DHR_TLS_INSECURE` flag is the emergency dev
   escape hatch, never shipped.
 
-## C2 — OTA image signing (planned)
+## C2 — OTA image signing (in progress)
 
 **Goal:** the board only flashes firmware images that were actually signed by
 the project, closing the "MITM serves a malicious `.bin`" path.
 
-- **Scheme:** Ed25519. Generate a keypair; the **private key lives only as a
-  GitHub Actions secret**, the public key is compiled into the firmware. The
-  release workflow signs `headroom-mini-app.bin` and publishes a detached
-  `.sig`. `doOTA()` downloads both, verifies the signature (mbedTLS) against the
-  embedded public key, and only calls `Update.end(true)` on success.
+- **Scheme:** ECDSA P-256 (chosen over Ed25519 because ESP32's mbedTLS ships
+  P-256 reliably; Ed25519/EdDSA is often not enabled). The **private key lives
+  only as a GitHub Actions secret** (`OTA_SIGNING_KEY`); the public key is
+  compiled into the firmware (`firmware/src/ota_pubkey.h`). The release workflow
+  signs `headroom-mini-app.bin` and publishes a detached
+  `headroom-mini-app.bin.sig`. `doOTA()` streams the image while hashing it,
+  fetches the `.sig`, and only calls `Update.end(true)` if the signature
+  verifies against the embedded key. **Fail-closed:** no valid signature → the
+  update is refused.
 - **Bootstrapping:** the first signature-checking firmware is installed once
-  (OTA from current firmware, or USB); every OTA after that is verified.
-- **Key management:** document rotation; losing the private key means no more
-  OTA updates, so it is backed up out-of-band. Verify on hardware that a good
-  build is accepted and a tampered build is rejected.
+  (OTA from current firmware, or USB); every OTA after that is verified. A
+  signed build can't downgrade to a pre-C2 release (those have no `.sig`).
+
+### Required setup before tagging a signed release
+
+1. Generate an EC P-256 keypair (do this locally for a production key):
+   ```
+   openssl ecparam -name prime256v1 -genkey -noout -out ota_priv.pem
+   openssl ec -in ota_priv.pem -pubout -out ota_pub.pem
+   ```
+2. Put the **public** key (`ota_pub.pem`) into `firmware/src/ota_pubkey.h`.
+3. Add the **private** key as the repo secret **`OTA_SIGNING_KEY`**
+   (Settings → Secrets and variables → Actions → New repository secret; paste
+   the full `ota_priv.pem`, BEGIN/END lines included).
+4. Back the private key up offline. Losing it means no more OTA updates until
+   you rotate the embedded public key (a firmware change) and re-flash by USB.
+
+The release workflow **hard-fails** if `OTA_SIGNING_KEY` is missing, so a
+release can never ship un-updatable to C2 firmware.
+
+### Must test on board
+- A correctly-signed release installs (accepted).
+- A tampered image / wrong signature is **rejected** (board stays on the old
+  version, no brick).
 
 ## C3 — Companion pairing verification (planned)
 

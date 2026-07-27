@@ -10,7 +10,7 @@ GitHub Release; the setup page + companion download links always point at
 | Workflow | Trigger | Produces |
 |---|---|---|
 | `firmware.yml` | push/PR touching `firmware/**` | compile-check + firmware artifacts (CI gate) |
-| `release.yml` | push tag `v*` | `HeadroomCompanion-{windows.exe,macos,linux}` + `headroom-mini-merged.bin`, attached to the Release |
+| `release.yml` | push tag `v*` | `HeadroomCompanion-{windows.exe,macos,linux}` + `headroom-mini-merged.bin` + the signed OTA `headroom-mini-app.bin.sig`, attached to the Release |
 | `pages.yml` | push to `main` touching `docs/**` | deploys the setup/flasher page to GitHub Pages |
 
 Fixed URLs the site depends on (resolve once a Release exists):
@@ -22,6 +22,10 @@ Fixed URLs the site depends on (resolve once a Release exists):
 
 - [ ] **GitHub → Settings → Pages → Source = "GitHub Actions."** Without this,
       `pages.yml` has nothing to publish to and the flasher page never goes live.
+- [ ] **Add the `OTA_SIGNING_KEY` repo secret** (the EC P-256 private key —
+      keygen + steps in `docs/HARDENING.md`). Signature-checking firmware
+      refuses an unsigned OTA image, and `release.yml` hard-fails without this
+      secret. Required from the first signed-OTA release onward.
 
 ## Every release
 
@@ -58,6 +62,9 @@ Fixed URLs the site depends on (resolve once a Release exists):
          board) → status flips to "Running self-contained" and meters update
          with no companion running. (`/connect` manual paste is the fallback.)
        - `/alerts` → set an ntfy topic → **Send test alert** lands on a phone.
+       - **OTA:** from a board on the previous release, open `/update` and
+         confirm it installs the new signed image and reboots on the new
+         version (the signature is accepted).
 
 ## Release notes template
 
@@ -77,8 +84,30 @@ Fixed URLs the site depends on (resolve once a Release exists):
   backoff.
 ```
 
+## Signed firmware updates (OTA)
+
+From the first signature-checking build onward, the board verifies an ECDSA
+P-256 signature before applying any OTA image (details in `docs/HARDENING.md`).
+Two things to keep straight:
+
+- **Every release must be signed.** `release.yml` signs `headroom-mini-app.bin`
+  with the `OTA_SIGNING_KEY` secret and publishes `headroom-mini-app.bin.sig`
+  next to it. The signing step hard-fails if the secret is missing, so you can't
+  accidentally ship a release that signature-checking boards will reject.
+- **Bootstrap order (matters once).** A board already running signed-OTA
+  firmware only accepts signed releases. The *first* signed build therefore has
+  to reach a board another way — an OTA from the previous, non-checking firmware,
+  or a USB re-flash. After that, every OTA is verified. A signed build will not
+  downgrade to a pre-signing release (those carry no `.sig`).
+
+**Rotating the signing key:** generate a new EC P-256 keypair, replace the PEM
+in `firmware/src/ota_pubkey.h`, update the `OTA_SIGNING_KEY` secret, and ship
+that build — again, its first delivery is OTA-from-old or USB, since existing
+boards trust the old key until they run the new firmware.
+
 ## Rollback
 
 Releases are immutable; to ship a fix, tag a new patch (`v1.0.1`). The setup
 page and companion links track `releases/latest`, so a new Release moves users
-forward automatically — nothing else to update.
+forward automatically — nothing else to update. (A signed-OTA board only rolls
+forward to another *signed* release, not back to a pre-signing one.)
