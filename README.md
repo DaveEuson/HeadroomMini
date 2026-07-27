@@ -48,10 +48,8 @@ No tools, no command line:
   logins.)
 - **Self-contained (no computer).** Run the companion once with `--pair` and it
   hands the board your login; the board then polls Anthropic directly and
-  refreshes its own token — nothing runs on your computer afterward. Use a
-  **spare Claude account** for the board so it doesn't rotate your main login's
-  token.
-
+  refreshes its own token — nothing runs on your computer afterward.
+  
 ## What it does
 
 - **Meters** for every usage window Claude reports (5-hour session, weekly,
