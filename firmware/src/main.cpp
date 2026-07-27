@@ -786,7 +786,13 @@ static void drawTimer() {
 }
 
 // Draw whichever screen is active (data updates / ticks call this).
+static bool pairingActive();   // defined with the pairing handlers below
+static void drawPairScreen();
+
 static void drawScreen() {
+  // While pairing, the one-time code owns the screen — any full redraw
+  // (30s tick, auto-rotate, a tap) must not paint the normal UI over it.
+  if (pairingActive()) { drawPairScreen(); return; }
   if (uiScreen == 1)      drawFocus();
   else if (uiScreen == 2) drawHistory();
   else if (uiScreen == 3) drawMascot();
@@ -2490,7 +2496,8 @@ void loop() {
   }
   // Timer screen ticks its countdown every second (redraws only the digits).
   static unsigned long lastSec = 0;
-  if (uiScreen == 4 && !screenOff && timerResetAt && millis() - lastSec >= 1000) {
+  if (uiScreen == 4 && !screenOff && !pairingActive() && timerResetAt &&
+      millis() - lastSec >= 1000) {
     lastSec = millis();
     drawTimerClock();
   }
@@ -2502,7 +2509,7 @@ void loop() {
   // whole screen into the off-screen buffer (drawMascot blits it in one pass,
   // so there's no flicker).
   static unsigned long lastAnim = 0;
-  if (uiScreen == 3 && !screenOff && millis() - lastAnim >= 200) {
+  if (uiScreen == 3 && !screenOff && !pairingActive() && millis() - lastAnim >= 200) {
     lastAnim = millis();
     mascotFrame++;
     drawMascot();
