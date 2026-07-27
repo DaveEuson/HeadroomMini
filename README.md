@@ -46,10 +46,13 @@ No tools, no command line:
   and forget: it auto-finds the board and starts with your computer. (It never
   does a fresh sign-in, so it avoids the throttle that blocks third-party
   logins.)
-- **Self-contained (no computer).** Run the companion once with `--pair` and it
-  hands the board your login; the board then polls Anthropic directly and
-  refreshes its own token — nothing runs on your computer afterward.
-  
+- **Self-contained (no computer).** Run the companion once with `--pair`; the
+  board shows a short confirmation code on its screen, you type it in, and only
+  then does it take your login — so the token goes to the physical device in
+  front of you, not to whatever answered first on the network. The board then
+  polls Anthropic directly and refreshes its own token — nothing runs on your
+  computer afterward.
+
 ## What it does
 
 - **Meters** for every usage window Claude reports (5-hour session, weekly,
@@ -62,6 +65,22 @@ No tools, no command line:
 - **Battery gauge** from the LiPo header.
 - **Phone alerts** via ntfy or Pushover when a window crosses a threshold, with
   a recovery notice.
+
+## Security
+
+- **Verified TLS** — every connection to Anthropic, GitHub, and the alert
+  providers checks certificates against a pinned set of root CAs (no
+  `setInsecure()`), so a network attacker can't intercept your Claude token or
+  spoof a response.
+- **Signed updates** — OTA images are verified against a public key baked into
+  the firmware before flashing; an unsigned or tampered image is refused and the
+  board stays on its known-good version.
+- **Confirmed pairing** — handing the board your login requires a one-time code
+  shown on its screen, so the token only ever goes to the physical device in
+  front of you — not to whatever won the network discovery race.
+
+Designed for a trusted home or office network. Details and threat model in
+[`docs/HARDENING.md`](docs/HARDENING.md).
 
 ## Repo layout
 
