@@ -110,7 +110,7 @@ static bool apMode = false;
 static const char *AP_SSID = "Headroom-Setup";
 static const char *AP_PSK  = "headroom";
 static const int   API_PORT = 8080;   // what the companion probes
-static const char *FW_VERSION = "1.2.1";
+static const char *FW_VERSION = "1.2.2";
 
 // Phase 2 — self-contained: poll Anthropic's usage endpoint directly, using an
 // OAuth login pasted once via /connect. Same contract the companion uses.
@@ -118,7 +118,7 @@ static const char *CLIENT_ID   = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 static const char *REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
 static const char *USAGE_URL   = "https://api.anthropic.com/api/oauth/usage";
 static const char *OAUTH_BETA  = "oauth-2025-04-20";
-static const char *UA          = "Headroom-Mini/1.2.1";
+static const char *UA          = "Headroom-Mini/1.2.2";
 // OTA self-update (over-the-air from the GitHub release)
 static const char *RELEASES_API =
     "https://api.github.com/repos/DaveEuson/HeadroomMini/releases/latest";
@@ -242,11 +242,25 @@ static void fmtClock(time_t resets, char *out, size_t n) {
 
 // ------------------------------------------------------------------ drawing
 
+// Draw text centered at (screen-width/2, y). If the string is wider than the
+// screen it shrinks the text size step-by-step until it fits (down to size 1),
+// so long strings clip to a smaller font instead of wrapping around the edge.
+// The default GFX text-wrap is left ON only as a last-resort safety net for a
+// single word that is still too wide at size 1.
 static void drawCentered(const char *text, int y, uint8_t size, uint16_t color) {
+  const int MAXW = 236;                 // 240px screen, 2px breathing room each side
   int16_t x1, y1; uint16_t w, h;
+  while (size > 1) {
+    gfx->setTextSize(size);
+    gfx->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+    if ((int)w <= MAXW) break;
+    size--;
+  }
   gfx->setTextSize(size);
   gfx->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
-  gfx->setCursor((240 - (int)w) / 2, y);
+  int x = (240 - (int)w) / 2;
+  if (x < 0) x = 0;
+  gfx->setCursor(x, y);
   gfx->setTextColor(color);
   gfx->print(text);
 }
