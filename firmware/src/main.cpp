@@ -26,15 +26,19 @@
 #include <math.h>
 #include <ctype.h>
 #include <time.h>
+#include "root_cas.h"
 
-// TLS trust for every outbound HTTPS call. GOAL: verify server certs against a
-// root-CA bundle so a MITM can't impersonate Anthropic/GitHub or feed a forged
-// OTA image. That needs the ESP-IDF cert bundle embedded in the build
-// (gen_crt_bundle.py + board_build.embed_files) — tracked for the 1.2 hardening
-// release. Until then this is a no-verify handshake; keep all call sites going
-// through this one helper so turning verification on is a single-line change.
+// TLS trust for every outbound HTTPS call. By default the board verifies server
+// certificates against a curated set of public root CAs (root_cas.h), so a MITM
+// can't impersonate Anthropic/GitHub or feed a forged OTA image. Build with
+// -DHR_TLS_INSECURE to fall back to a no-verify handshake for local development
+// only — it must never ship. All call sites go through this one helper.
 static inline void tlsTrust(WiFiClientSecure &c) {
-  c.setInsecure();   // TODO(1.2): swap for setCACertBundle once the bundle ships
+#ifdef HR_TLS_INSECURE
+  c.setInsecure();
+#else
+  c.setCACert(HR_ROOT_CAS);
+#endif
 }
 
 // ---------------------------------------------------------------- pins / lcd
