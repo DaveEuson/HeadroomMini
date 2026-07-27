@@ -27,6 +27,8 @@
 #include <ctype.h>
 #include <time.h>
 #include "root_cas.h"
+#include <mbedtls/md.h>
+#include <esp_random.h>
 
 // TLS trust for every outbound HTTPS call. By default the board verifies server
 // certificates against a curated set of public root CAs (root_cas.h), so a MITM
@@ -1703,16 +1705,84 @@ static void handleConnectSave() {
   server->send(200, "text/html", s);
 }
 
+// ---- Pairing (C3): an out-of-band code proves the companion is talking to the
+// real board before any token crosses the wire. The board shows a one-time code
+// on its screen; the companion proves the endpoint knows it (HMAC challenge)
+// before sending, and the board proves the companion knows it before storing.
+// A discovery-race impostor never sees the code, so it never receives the token.
+static String        pairCode;                 // "" when not pairing
+static unsigned long pairStartMs = 0;
+static const unsigned long PAIR_TTL = 180000;  // 3 min, single use
+
+static bool pairingActive() {
+  return pairCode.length() && (millis() - pairStartMs) < PAIR_TTL;
+}
+
+static String hmacSha256Hex(const String &key, const String &msg) {
+  uint8_t out[32];
+  const mbedtls_md_info_t *info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  mbedtls_md_hmac(info, (const uint8_t *)key.c_str(), key.length(),
+                  (const uint8_t *)msg.c_str(), msg.length(), out);
+  char hex[65];
+  for (int i = 0; i < 32; i++) snprintf(hex + i * 2, 3, "%02x", out[i]);
+  return String(hex);
+}
+
+// Big code on screen; the loop reverts to the normal UI when it expires.
+static void drawPairScreen() {
+  gfx->fillScreen(C_BG);
+  drawCentered("Pairing", 56, 3, C_INK);
+  drawCentered("type this code into the", 100, 1, C_MUTED);
+  drawCentered("companion app on your computer", 116, 1, C_MUTED);
+  drawCentered(pairCode.c_str(), 150, 5, C_ACC);
+  drawCentered("expires in 3 minutes", 210, 1, C_MUTED);
+}
+
+static void handlePairStart() {
+  // Anyone on the LAN can ask the board to enter pairing mode, but the code is
+  // shown ONLY on the physical screen — an impostor board can't display it.
+  static const char *AB = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";  // no 0/O/1/I
+  pairCode = "";
+  for (int i = 0; i < 6; i++) pairCode += AB[esp_random() % 32];
+  pairStartMs = millis();
+  drawPairScreen();
+  sendJson(200, "{\"ok\":true}");
+}
+
+static void handlePairChallenge() {
+  if (!pairingActive()) { sendJson(409, "{\"ok\":false,\"error\":\"not pairing\"}"); return; }
+  String nonce = server->hasArg("plain") ? server->arg("plain") : "";
+  if (nonce.length() < 8) { sendJson(400, "{\"ok\":false}"); return; }
+  sendJson(200, String("{\"ok\":true,\"mac\":\"") + hmacSha256Hex(pairCode, nonce) + "\"}");
+}
+
+// The token POST is authorized by EITHER a matching push token (if the owner set
+// one) OR a valid pairing-code MAC — never open by default, unlike the browser
+// gate. This closes the "unauthenticated device overwrites the login" hole.
+static bool pairMacOk(const String &body) {
+  if (!pairingActive()) return false;
+  String nonce = server->header("X-Pair-Nonce");
+  String mac   = server->header("X-Pair-Mac");
+  if (nonce.length() < 8 || mac.length() != 64) return false;
+  return ctEqual(mac, hmacSha256Hex(pairCode, nonce + body));
+}
+
 // Companion --pair posts the oauth token here so the user never handles it.
 static void handlePair() {
-  if (!apiAuthed()) { sendJson(401, "{\"ok\":false,\"error\":\"unauthorized\"}"); return; }
   if (!server->hasArg("plain")) { sendJson(400, "{\"ok\":false}"); return; }
+  String body = server->arg("plain");
+  bool tokenOk = pushToken.length() &&
+                 ctEqual(server->header("X-Push-Token"), pushToken);
+  if (!tokenOk && !pairMacOk(body)) {
+    sendJson(401, "{\"ok\":false,\"error\":\"unauthorized\"}");
+    return;
+  }
   JsonDocument doc;
-  if (deserializeJson(doc, server->arg("plain")) ||
-      !storeOauth(doc.as<JsonObject>())) {
+  if (deserializeJson(doc, body) || !storeOauth(doc.as<JsonObject>())) {
     sendJson(400, "{\"ok\":false,\"error\":\"no login in body\"}");
     return;
   }
+  pairCode = ""; pairStartMs = 0;             // consume the pairing session
   bool live = fetchUsage(true);
   sendJson(200, live ? "{\"ok\":true,\"live\":true}" : "{\"ok\":true,\"live\":false}");
 }
@@ -2256,6 +2326,8 @@ static void startApi() {
   server->on("/api/status", HTTP_GET, handleStatus);
   server->on("/api/push", HTTP_POST, handlePush);
   server->on("/api/pair", HTTP_POST, handlePair);
+  server->on("/api/pair/start", HTTP_POST, handlePairStart);
+  server->on("/api/pair/challenge", HTTP_POST, handlePairChallenge);
   server->on("/connect", HTTP_GET, handleConnectPage);
   server->on("/connect", HTTP_POST, handleConnectSave);
   server->on("/disconnect", HTTP_POST, handleDisconnect);
@@ -2268,8 +2340,8 @@ static void startApi() {
   server->on("/update/install", HTTP_POST, handleUpdateInstall);
   server->on("/setup", HTTP_GET, handleRoot);      // friendly alias for the docs
   server->on("/", HTTP_GET, handleRoot);
-  const char *watch[] = {"X-Push-Token"};          // capture the auth header
-  server->collectHeaders(watch, 1);
+  const char *watch[] = {"X-Push-Token", "X-Pair-Nonce", "X-Pair-Mac"};
+  server->collectHeaders(watch, 3);
   server->begin();
   MDNS.begin("headroom");
   MDNS.addService("http", "tcp", API_PORT);
@@ -2349,6 +2421,10 @@ void loop() {
     lastSec = millis();
     drawTimerClock();
   }
+  // Drop the pairing screen back to the normal UI once the code expires.
+  static bool pairShown = false;
+  if (pairingActive()) pairShown = true;
+  else if (pairShown) { pairShown = false; if (!screenOff) drawScreen(); }
   // Sprocket animates while his screen is up: advance a frame and redraw the
   // whole screen into the off-screen buffer (drawMascot blits it in one pass,
   // so there's no flicker).

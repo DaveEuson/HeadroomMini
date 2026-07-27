@@ -25,8 +25,11 @@ import argparse
 import concurrent.futures
 import datetime
 import glob
+import hashlib
+import hmac
 import json
 import os
+import secrets
 import socket
 import ssl
 import subprocess
@@ -351,9 +354,28 @@ def push(pi_url, token, payload):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def pair_device(url):
+def _pair_hmac(code, msg):
+    """HMAC-SHA256(code, msg) as lowercase hex — must match the firmware."""
+    return hmac.new(code.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def _pair_post(url, path, data=None, headers=None, timeout=15):
+    req = urllib.request.Request(url.rstrip("/") + path, data=data,
+                                 headers=headers or {}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def pair_device(url, token="", code=None, ask_code=None):
     """Hand this computer's existing Claude login to a board (Headroom Mini) so
-    it can poll usage on its own — the user never copies a token by hand."""
+    it can poll usage on its own — the user never copies a token by hand.
+
+    The token is only sent after we prove the endpoint is the real board: it
+    shows a one-time code on its screen, and we HMAC-challenge it with that code
+    before transmitting anything. A discovery-race impostor never learns the
+    code, so it never receives the login. If a push token is configured, that
+    authorizes pairing directly instead.
+    """
     creds, _ = read_creds()
     if not creds:
         _print_no_claude()
@@ -365,12 +387,47 @@ def pair_device(url):
         "subscriptionType": creds.get("subscriptionType"),
     }
     body = json.dumps(oauth).encode("utf-8")
-    req = urllib.request.Request(url.rstrip("/") + "/api/pair", data=body,
-                                 headers={"Content-Type": "application/json"},
-                                 method="POST")
+    headers = {"Content-Type": "application/json"}
+
+    if token:
+        headers["X-Push-Token"] = token
+    else:
+        # 1. Ask the board to enter pairing mode — it shows a code on its screen.
+        try:
+            _pair_post(url, "/api/pair/start", timeout=10)
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
+            return False
+        # 2. Get that code from the user (out-of-band — this is the whole point).
+        if code is None:
+            prompt = "Enter the 6-character code shown on your board's screen: "
+            code = ask_code() if ask_code else input(prompt)
+        code = (code or "").strip().upper()
+        if not code:
+            print("No pairing code entered.", file=sys.stderr)
+            return False
+        # 3. Prove the endpoint knows the code BEFORE sending the token.
+        nonce = secrets.token_hex(16)
+        try:
+            ch = _pair_post(url, "/api/pair/challenge", nonce.encode(),
+                            {"Content-Type": "text/plain"}, timeout=10)
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
+            return False
+        if not ch.get("ok") or not hmac.compare_digest(
+                ch.get("mac", ""), _pair_hmac(code, nonce.encode())):
+            print("That code didn't match the board. Double-check the screen and "
+                  "retry — if it keeps failing, the device that answered may not "
+                  "be your board.", file=sys.stderr)
+            return False
+        # 4. Endpoint proven. MAC the token so the board also confirms we hold
+        #    the code (stops a random LAN device overwriting the login).
+        nonce2 = secrets.token_hex(16)
+        headers["X-Pair-Nonce"] = nonce2
+        headers["X-Pair-Mac"] = _pair_hmac(code, nonce2.encode() + body)
+
     try:
-        with urllib.request.urlopen(req, timeout=20, context=_SSL_CONTEXT) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
+        result = _pair_post(url, "/api/pair", body, headers, timeout=20)
     except (urllib.error.URLError, OSError, ValueError) as exc:
         print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
         return False
@@ -688,7 +745,11 @@ def main():
     ap.add_argument("--pair", nargs="?", const="", default=None, metavar="URL",
                     help="send this computer's Claude login to a board so it "
                          "runs self-contained, then exit (board auto-found if "
-                         "no URL is given)")
+                         "no URL is given). The board shows a one-time code you "
+                         "confirm, so the login only goes to your real board.")
+    ap.add_argument("--pair-code", default=None, metavar="CODE",
+                    help="the code shown on the board's screen (otherwise you "
+                         "are prompted for it during --pair)")
     ap.add_argument("--no-install", action="store_true",
                     help="don't add to startup")
     ap.add_argument("--uninstall", action="store_true",
@@ -704,7 +765,8 @@ def main():
             ap.error("couldn't find a board on your network. Make sure it's "
                      "powered on and on the same Wi-Fi, or pass the address "
                      "shown on its screen: --pair http://<its-address>:8080")
-        sys.exit(0 if pair_device(url) else 1)
+        sys.exit(0 if pair_device(url, token=args.token,
+                                  code=args.pair_code) else 1)
 
     if args.uninstall:
         removed = uninstall_autostart()

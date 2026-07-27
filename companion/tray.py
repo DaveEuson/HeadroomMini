@@ -132,15 +132,35 @@ def worker(icon):
 
 # ---------------------------------------------------------------- menu actions
 
+def _ask_pair_code():
+    """Pop a small dialog for the code the board shows during pairing. The tray
+    has no console, so companion.pair_device() can't fall back to input()."""
+    try:
+        import tkinter as tk
+        from tkinter import simpledialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        code = simpledialog.askstring(
+            "Pair board",
+            "Look at your Headroom board — it's showing a 6-character code.\n"
+            "Enter it here to finish pairing:")
+        root.destroy()
+        return code or ""
+    except Exception:
+        return ""
+
+
 def do_pair(icon, item):
     def run():
         url = state["url"] or companion.discover_pi()
         if not url:
             state["status"] = "Pair failed: board not found"
         else:
-            ok = companion.pair_device(url)
+            ok = companion.pair_device(url, ask_code=_ask_pair_code)
             state["status"] = ("Paired — the board runs on its own now"
-                               if ok else "Pair failed (is a Claude login here?)")
+                               if ok else "Pair failed (wrong code, or no Claude "
+                               "login here?)")
         icon.update_menu()
     threading.Thread(target=run, daemon=True).start()
 
