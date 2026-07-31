@@ -39,8 +39,8 @@ jobs:
             tray_backend: pystray._xorg
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # certifi -> bundled CA store (fixes macOS TLS); pystray/pillow -> the tray UI.
@@ -58,11 +58,11 @@ jobs:
           cd dist
           mv "HeadroomCompanion${{ matrix.ext }}" "${{ matrix.asset }}"
           mv "HeadroomCompanion-cli${{ matrix.ext }}" "${{ matrix.cli_asset }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           path: companion/dist/${{ matrix.asset }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.cli_asset }}
           path: companion/dist/${{ matrix.cli_asset }}
@@ -71,11 +71,27 @@ jobs:
   firmware:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install platformio esptool
+      - name: Check FW_VERSION matches the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: firmware
+        run: |
+          # A tag created from a stale local commit ships firmware that reports
+          # the wrong version (and the flasher then advertises a build that
+          # doesn't match). Fail before spending a build on it.
+          TAG="${GITHUB_REF#refs/tags/v}"
+          FW=$(sed -n 's/.*FW_VERSION *= *"\([^"]*\)".*/\1/p' src/main.cpp | head -1)
+          echo "tag=$TAG firmware=$FW"
+          if [ "$TAG" != "$FW" ]; then
+            echo "::error::Tag v$TAG does not match FW_VERSION $FW in src/main.cpp."
+            echo "::error::Either bump FW_VERSION or tag the commit that has it"
+            echo "::error::(git tag v$FW origin/main)."
+            exit 1
+          fi
       - name: Build firmware
         working-directory: firmware
         run: pio run
@@ -144,7 +160,7 @@ jobs:
             -signature out/headroom-mini-app.bin.sig out/headroom-mini-app.bin
           shred -u ota_priv.pem 2>/dev/null || rm -f ota_priv.pem
           ls -l out/headroom-mini-app.bin.sig
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: firmware-images
           path: firmware/out/*
@@ -154,13 +170,37 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+      - name: Verify the published release has every expected asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A release that publishes with assets missing looks green but leaves
+          # users on the previous version (or with no signed OTA image). Assert
+          # the ones that matter are actually attached.
+          TAG="${GITHUB_REF#refs/tags/}"
+          ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                     --json assets --jq '.assets[].name')
+          echo "$ASSETS"
+          MISSING=0
+          for want in headroom-mini-app.bin headroom-mini-app.bin.sig \
+                      headroom-mini-bootloader.bin headroom-mini-partitions.bin \
+                      headroom-mini-boot_app0.bin headroom-mini-merged.bin \
+                      HeadroomCompanion-windows.exe HeadroomCompanion-macos \
+                      HeadroomCompanion-linux; do
+            if ! echo "$ASSETS" | grep -qx "$want"; then
+              echo "::error::Release $TAG is missing asset: $want"
+              MISSING=1
+            fi
+          done
+          [ "$MISSING" -eq 0 ] || exit 1
+          echo "All expected assets present on $TAG."
 
   # Redeploy the browser flasher with THIS release's firmware. Done here in the
   # same run (not via pages.yml's `release` trigger) because a release published
@@ -181,15 +221,15 @@ jobs:
       group: pages
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Bundle this release's firmware into the flasher (same-origin)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: firmware-images
           path: docs/firmware
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

@@ -98,9 +98,16 @@ struct Window {
   time_t resets_at;       // UTC epoch, 0 if unknown
 };
 
-static const int MAX_WINDOWS = 4;
+// Anthropic reports a window per limit: session, weekly (all models), plus one
+// per model (Opus, Sonnet, Fable...), connected apps and extra usage. Sized
+// with headroom so a newly-introduced model doesn't push a real window off.
+static const int MAX_WINDOWS = 8;
 static Window windows[MAX_WINDOWS];
 static int nWindows = 0;
+// How many windows the source actually reported, which can exceed the
+// MAX_WINDOWS we keep. The meters footer counts from this so "+N more" stays
+// truthful instead of counting only what survived truncation.
+static int nWindowsSeen = 0;
 static char plan[16] = "";
 static unsigned long lastPushMs = 0;   // millis() of last accepted push
 static bool timeSynced = false;
@@ -426,9 +433,9 @@ static void drawMeters() {
       if (age < 90) gfx->print("updated just now");
       else { snprintf(buf, sizeof(buf), "updated %lum ago", age / 60); gfx->print(buf); }
     }
-    if (nWindows > 3) {
+    if (nWindowsSeen > 3) {
       gfx->setTextColor(C_ACC);
-      snprintf(buf, sizeof(buf), "   +%d more", nWindows - 3);
+      snprintf(buf, sizeof(buf), "   +%d more", nWindowsSeen - 3);
       gfx->print(buf);
     }
   }
@@ -992,9 +999,11 @@ static void handlePush() {
     return;
   }
   nWindows = 0;
+  nWindowsSeen = 0;
   for (JsonObject w : doc["windows"].as<JsonArray>()) {
-    if (nWindows >= MAX_WINDOWS) break;
     if (!w["utilization"].is<float>() && !w["utilization"].is<int>()) continue;
+    nWindowsSeen++;                       // count first: "+N more" must be honest
+    if (nWindows >= MAX_WINDOWS) continue;
     Window &dst = windows[nWindows++];
     strlcpy(dst.key, w["key"] | "", sizeof(dst.key));
     strlcpy(dst.label, w["label"] | "Usage", sizeof(dst.label));
@@ -1390,6 +1399,15 @@ static const char *shortLabel(const char *key) {
   if (!strcmp(key, "seven_day_opus"))       return "Opus";
   if (!strcmp(key, "seven_day_sonnet"))     return "Sonnet";
   if (!strcmp(key, "seven_day_fable"))      return "Fable";
+  // Any future per-model weekly window: show the model name, capitalised,
+  // rather than a generic "Usage" that's indistinguishable from its siblings.
+  if (!strncmp(key, "seven_day_", 10) && key[10]) {
+    static char model[16];
+    strlcpy(model, key + 10, sizeof(model));
+    for (char *p = model; *p; p++) if (*p == '_') *p = ' ';
+    if (model[0] >= 'a' && model[0] <= 'z') model[0] -= 32;
+    return model;
+  }
   if (!strcmp(key, "seven_day_oauth_apps")) return "Apps";
   if (!strcmp(key, "extra_usage"))          return "Extra";
   return "Usage";
@@ -1456,15 +1474,21 @@ static bool fetchUsage(bool allowRefresh) {
   }
   JsonObject root = doc.as<JsonObject>();
 
-  // Fixed display order, mirroring the companion's ordering.
+  // Preferred display order, mirroring the companion's ordering. Anything the
+  // API reports that isn't listed here (a newly-introduced model window, say)
+  // is appended afterwards rather than dropped — a fixed allow-list would make
+  // a new window silently invisible on a self-hosted board.
   static const char *const ORDER[] = {
-      "five_hour", "seven_day", "seven_day_sonnet",
-      "seven_day_opus", "seven_day_oauth_apps", "extra_usage"};
+      "five_hour", "seven_day", "seven_day_sonnet", "seven_day_opus",
+      "seven_day_fable", "seven_day_oauth_apps", "extra_usage"};
   nWindows = 0;
-  for (const char *key : ORDER) {
-    if (nWindows >= MAX_WINDOWS) break;
-    JsonVariant v = root[key];
-    if (!v.is<JsonObject>() || v["utilization"].isNull()) continue;
+  nWindowsSeen = 0;
+
+  // Adds one window if it looks like a usage object; counts it either way.
+  auto take = [&](const char *key, JsonVariant v) {
+    if (!v.is<JsonObject>() || v["utilization"].isNull()) return;
+    nWindowsSeen++;
+    if (nWindows >= MAX_WINDOWS) return;
     Window &w = windows[nWindows++];
     strlcpy(w.key, key, sizeof(w.key));
     strlcpy(w.label, shortLabel(key), sizeof(w.label));
@@ -1473,6 +1497,14 @@ static bool fetchUsage(bool allowRefresh) {
     const char *r = v["resets_at"].as<const char *>();
     if (!r) r = v["resetsAt"].as<const char *>();
     w.resets_at = parseISO(r);
+  };
+
+  for (const char *key : ORDER) take(key, root[key]);
+  for (JsonPair kv : root) {                   // then anything not listed above
+    bool known = false;
+    for (const char *key : ORDER)
+      if (!strcmp(kv.key().c_str(), key)) { known = true; break; }
+    if (!known) take(kv.key().c_str(), kv.value());
   }
   if (nWindows == 0) {
     strlcpy(pollStatus, "no usage windows", sizeof(pollStatus));
@@ -1875,7 +1907,7 @@ static void handleDisconnect() {
   prefs.remove("atok"); prefs.remove("rtok");
   prefs.remove("exp");  prefs.remove("plan");
   prefs.end();
-  nWindows = 0;
+  nWindows = 0; nWindowsSeen = 0;
   server->send(200, "text/html", "<p>Disconnected. <a href=/connect>back</a></p>");
 }
 

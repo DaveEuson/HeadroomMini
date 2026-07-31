@@ -32,7 +32,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Bundle latest firmware images for the flasher (same-origin, no CORS)
         run: |
           base="https://github.com/${{ github.repository }}/releases/latest/download"
@@ -41,9 +41,9 @@ jobs:
             curl -fsSL -o "docs/firmware/$f" "$base/$f" \
               || echo "::warning::missing $f in latest release (flasher Install 404s until a release with split images exists)"
           done
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

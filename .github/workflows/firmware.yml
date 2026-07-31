@@ -6,6 +6,9 @@ name: Build firmware
 
 on:
   push:
+    # Tags are handled by release.yml, which builds the firmware itself —
+    # without this the two workflows both compile on every release tag.
+    tags-ignore: ["v*"]
     paths: ["firmware/**", ".github/workflows/firmware.yml"]
   pull_request:
     paths: ["firmware/**", ".github/workflows/firmware.yml"]
@@ -15,12 +18,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Cache PlatformIO
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.platformio
@@ -30,7 +33,7 @@ jobs:
       - name: Build
         working-directory: firmware
         run: pio run
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: headroom-mini-firmware
           path: |
