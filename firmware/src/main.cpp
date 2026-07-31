@@ -1389,6 +1389,7 @@ static const char *shortLabel(const char *key) {
   if (!strcmp(key, "seven_day"))            return "Weekly";
   if (!strcmp(key, "seven_day_opus"))       return "Opus";
   if (!strcmp(key, "seven_day_sonnet"))     return "Sonnet";
+  if (!strcmp(key, "seven_day_fable"))      return "Fable";
   if (!strcmp(key, "seven_day_oauth_apps")) return "Apps";
   if (!strcmp(key, "extra_usage"))          return "Extra";
   return "Usage";

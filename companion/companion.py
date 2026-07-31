@@ -63,6 +63,7 @@ WINDOW_LABELS = {
     "seven_day": "Weekly (all models)",
     "seven_day_sonnet": "Weekly (Sonnet)",
     "seven_day_opus": "Weekly (Opus)",
+    "seven_day_fable": "Weekly (Fable)",
     "seven_day_oauth_apps": "Weekly (connected apps)",
     "extra_usage": "Extra usage",
 }
@@ -208,6 +209,18 @@ def fetch_usage(token):
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _window_label(key):
+    """Friendly name for a usage window. Known windows are named explicitly;
+    any future per-model weekly window (seven_day_<model>, e.g. seven_day_fable)
+    is turned into "Weekly (<Model>)" rather than a raw "Seven Day Fable"."""
+    if key in WINDOW_LABELS:
+        return WINDOW_LABELS[key]
+    if key.startswith("seven_day_"):
+        model = key[len("seven_day_"):].replace("_", " ").title()
+        return f"Weekly ({model})"
+    return key.replace("_", " ").title()
+
+
 def windows_from_usage(raw):
     order = list(WINDOW_LABELS)
     out = []
@@ -223,7 +236,7 @@ def windows_from_usage(raw):
             continue
         out.append({
             "key": key,
-            "label": WINDOW_LABELS.get(key, key.replace("_", " ").title()),
+            "label": _window_label(key),
             "utilization": round(util, 1),
             "resets_at": value.get("resets_at") or value.get("resetsAt"),
         })
