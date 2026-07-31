@@ -1,0 +1,29 @@
+name: Test companion
+
+# Unit-tests the companion's pure logic (window parsing/labelling, pairing
+# HMAC). These are the parts that fail silently: a mislabelled window looks
+# plausible on the board, and a pairing MAC that drifts from the firmware's
+# framing only shows up on real hardware.
+
+on:
+  push:
+    tags-ignore: ["v*"]
+    paths: ["companion/**", ".github/workflows/companion.yml"]
+  pull_request:
+    paths: ["companion/**", ".github/workflows/companion.yml"]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # No install step: the companion is stdlib-only by design (certifi is an
+      # optional runtime nicety), and the tests touch no network or filesystem.
+      - name: Run unit tests
+        run: python -m unittest discover -s companion -v
+      - name: Byte-compile every companion module
+        run: python -m compileall -q companion
