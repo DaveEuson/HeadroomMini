@@ -26,22 +26,39 @@
 #include <math.h>
 #include <ctype.h>
 #include <time.h>
-#include "root_cas.h"
+#ifdef HR_TLS_CURATED_ROOTS
+#include "root_cas.h"          // only compiled in for the fallback build
+#endif
 #include <mbedtls/md.h>
 #include <esp_random.h>
 #include <mbedtls/pk.h>
 #include "ota_pubkey.h"
 
-// TLS trust for every outbound HTTPS call. By default the board verifies server
-// certificates against a curated set of public root CAs (root_cas.h), so a MITM
-// can't impersonate Anthropic/GitHub or feed a forged OTA image. Build with
-// -DHR_TLS_INSECURE to fall back to a no-verify handshake for local development
-// only — it must never ship. All call sites go through this one helper.
+// TLS trust for every outbound HTTPS call, so a MITM can't impersonate
+// Anthropic/GitHub or feed a forged OTA image. All call sites go through here.
+//
+// Default: the ESP-IDF root certificate bundle that ships with the core — the
+// full Mozilla root set. A hand-picked list of roots (what this used to do)
+// only fails when a host we rarely reach rotates to an unlisted CA, and the
+// token-refresh host is contacted only when a token expires, so such a gap
+// could sit undetected for weeks. The bundle also costs *less* heap per
+// connection: it binary-searches the roots and parses only the one that
+// matches, instead of parsing every embedded PEM on each handshake.
+//
+// Build flags, neither of which ships:
+//   -DHR_TLS_CURATED_ROOTS  fall back to the curated set in root_cas.h
+//   -DHR_TLS_INSECURE       no verification at all — local development only
+#if !defined(HR_TLS_INSECURE) && !defined(HR_TLS_CURATED_ROOTS)
+extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
+#endif
+
 static inline void tlsTrust(WiFiClientSecure &c) {
-#ifdef HR_TLS_INSECURE
+#if defined(HR_TLS_INSECURE)
   c.setInsecure();
-#else
+#elif defined(HR_TLS_CURATED_ROOTS)
   c.setCACert(HR_ROOT_CAS);
+#else
+  c.setCACertBundle(rootca_crt_bundle_start);
 #endif
 }
 

@@ -7,6 +7,15 @@ certificate, a signature, or a pairing code — shipping them unverified could
 brick connectivity or flashing across every unit, so each lands on a branch for
 an on-hardware smoke-test before merge.
 
+> **Update (post-1.3.0):** C1 now uses the ESP-IDF root certificate bundle (the
+> full Mozilla root set) rather than the curated list described below. A
+> hand-picked set only fails when a host rotates to an unlisted CA, and the
+> token-refresh host is contacted just once a token expires — so a gap could go
+> unnoticed for weeks. The bundle is also cheaper per handshake: it
+> binary-searches the roots and parses only the matching one. `root_cas.h` is
+> retained behind `-DHR_TLS_CURATED_ROOTS` as a rollback path. The rest of this
+> section is kept for the original rationale.
+
 ## C1 — TLS certificate verification (in progress)
 
 **Goal:** stop `setInsecure()`; verify server certificates so a man-in-the-middle
