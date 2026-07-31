@@ -111,13 +111,23 @@ jobs:
           # the signing key isn't configured rather than ship an un-updatable build.
           if [ -z "$OTA_SIGNING_KEY" ]; then
             echo "::error::OTA_SIGNING_KEY secret is not set. Add the EC P-256"
-            echo "::error::private key as a repo secret before tagging a release."
+            echo "::error::private key as a *repository* secret (Settings -> Secrets"
+            echo "::error::and variables -> Actions) before tagging a release."
             exit 1
           fi
-          printf '%s\n' "$OTA_SIGNING_KEY" > ota_priv.pem
+          # Strip CR: a key pasted from a Windows terminal carries CRLF endings,
+          # which openssl won't parse ("Could not read private key").
+          printf '%s\n' "$OTA_SIGNING_KEY" | tr -d '\r' > ota_priv.pem
+          if ! openssl pkey -in ota_priv.pem -noout 2>/dev/null; then
+            echo "::error::OTA_SIGNING_KEY is set but is not a readable PEM private key."
+            echo "::error::It was most likely mangled by copy/paste (line breaks lost)."
+            echo "::error::Set it straight from the file instead of pasting:"
+            echo "::error::  gh secret set OTA_SIGNING_KEY --repo <owner>/<repo> < headroom-ota-key.pem"
+            exit 1
+          fi
           openssl dgst -sha256 -sign ota_priv.pem \
             -out out/headroom-mini-app.bin.sig out/headroom-mini-app.bin
-          openssl dgst -sha256 -verify <(openssl ec -in ota_priv.pem -pubout 2>/dev/null) \
+          openssl dgst -sha256 -verify <(openssl pkey -in ota_priv.pem -pubout 2>/dev/null) \
             -signature out/headroom-mini-app.bin.sig out/headroom-mini-app.bin
           shred -u ota_priv.pem 2>/dev/null || rm -f ota_priv.pem
           ls -l out/headroom-mini-app.bin.sig
