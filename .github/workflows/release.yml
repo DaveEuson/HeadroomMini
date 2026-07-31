@@ -125,9 +125,22 @@ jobs:
             echo "::error::  gh secret set OTA_SIGNING_KEY --repo <owner>/<repo> < headroom-ota-key.pem"
             exit 1
           fi
+          # The signing key MUST match the public key compiled into the firmware.
+          # Verifying only against the private key's own public half would pass
+          # even on a mismatch, and every board would then silently refuse the
+          # update — a release that looks green but can never be installed.
+          sed -n '/BEGIN PUBLIC KEY/,/END PUBLIC KEY/p' src/ota_pubkey.h > embedded_pub.pem
+          openssl pkey -in ota_priv.pem -pubout -out signing_pub.pem 2>/dev/null
+          if ! cmp -s embedded_pub.pem signing_pub.pem; then
+            echo "::error::OTA_SIGNING_KEY does not match firmware/src/ota_pubkey.h."
+            echo "::error::Boards would reject this update. Either set the secret to the"
+            echo "::error::private key matching the embedded public key, or commit the"
+            echo "::error::public key derived from the current secret."
+            exit 1
+          fi
           openssl dgst -sha256 -sign ota_priv.pem \
             -out out/headroom-mini-app.bin.sig out/headroom-mini-app.bin
-          openssl dgst -sha256 -verify <(openssl pkey -in ota_priv.pem -pubout 2>/dev/null) \
+          openssl dgst -sha256 -verify embedded_pub.pem \
             -signature out/headroom-mini-app.bin.sig out/headroom-mini-app.bin
           shred -u ota_priv.pem 2>/dev/null || rm -f ota_priv.pem
           ls -l out/headroom-mini-app.bin.sig
