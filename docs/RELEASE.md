@@ -32,21 +32,32 @@ Fixed URLs the site depends on (resolve once a Release exists):
 1. [ ] **Bump the version.** Firmware `FW_VERSION` + `UA` in
        `firmware/src/main.cpp`; companion `USER_AGENT` in
        `companion/companion.py` if it changed. Keep them in step with the tag.
-2. [ ] **Green CI on the branch** — `firmware.yml` must be passing (it is the
-       only pre-tag compile check for the firmware).
+2. [ ] **Green CI on the branch** — `firmware.yml` (the only pre-tag compile
+       check for the firmware) and `companion.yml` (unit tests) must be passing.
 3. [ ] **Merge the PR into `main`.** This fires `pages.yml`, which redeploys the
        setup page. (It does *not* build binaries — only the tag does.)
 4. [ ] **Create the release / tag.** The tag **must start with `v`** (e.g.
        `v1.0.0`) — `release.yml` only triggers on `v*`, so a tag like `1.4.0`
-       silently builds nothing. Either push from `main`:
+       silently builds nothing.
+
+       **Tag `origin/main` explicitly, never the working copy.** Tagging
+       whatever your local checkout happens to be on has shipped the wrong
+       commit twice: once a months-old commit, once one commit short of the
+       intended content. `release.yml` now cross-checks the tag against
+       `FW_VERSION` and fails fast on a mismatch, but the habit is the real fix:
        ```
-       git checkout main && git pull
-       git tag v1.0.0 && git push origin v1.0.0
+       git fetch origin main
+       git tag v1.0.0 origin/main
+       git push origin v1.0.0
        ```
        or on GitHub: **Releases → Draft a new release → Choose a tag → type
        `v1.0.0` → Create new tag on publish → Publish**. Either way `release.yml`
        builds the three companion apps + the merged firmware image and attaches
        them to Release `v1.0.0`.
+
+       *Re-pointing a tag* (only safe while no release has been published for
+       it): `git tag -d v1.0.0 && git push origin :refs/tags/v1.0.0`, then
+       re-create and push as above.
 5. [ ] **Watch `release.yml` go green** and confirm the Release has the three
        `HeadroomCompanion-*` apps plus the firmware images
        (`headroom-mini-bootloader/partitions/boot_app0/app.bin` for the flasher,
