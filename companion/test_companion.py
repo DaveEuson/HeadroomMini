@@ -116,5 +116,48 @@ class PairHmacTests(unittest.TestCase):
                             companion._pair_hmac("BBBBBB", msg))
 
 
+class ActionKeyTests(unittest.TestCase):
+    """Key combos are turned into OS calls. Getting a combo wrong types the
+    wrong thing into whatever the user has focused, so parsing is pinned here
+    and unknown combos must be rejected rather than half-sent."""
+
+    def setUp(self):
+        self.calls = []
+        self._real_run = companion.subprocess.run
+        companion.subprocess.run = lambda *a, **k: (
+            self.calls.append(a[0]) or _FakeProc())
+
+    def tearDown(self):
+        companion.subprocess.run = self._real_run
+
+    def test_macos_named_keys_and_modifiers(self):
+        self.assertTrue(companion._send_keys_macos("shift+tab"))
+        self.assertIn("key code 48 using {shift down}", self.calls[-1][-1])
+
+    def test_macos_plain_character_uses_keystroke(self):
+        self.assertTrue(companion._send_keys_macos("ctrl+c"))
+        self.assertIn('keystroke "c" using {control down}', self.calls[-1][-1])
+
+    def test_linux_builds_xdotool_combo(self):
+        self.assertTrue(companion._send_keys_linux("shift+tab"))
+        self.assertEqual(self.calls[-1], ["xdotool", "key", "shift+Tab"])
+
+    def test_unknown_combos_are_rejected_not_partially_sent(self):
+        for combo in ("bogus", "shift", "ctrl+nonsense"):
+            self.calls.clear()
+            self.assertFalse(companion._send_keys_macos(combo), combo)
+            self.assertFalse(companion._send_keys_linux(combo), combo)
+            self.assertEqual(self.calls, [], f"{combo!r} sent something")
+
+    def test_default_actions_match_what_the_firmware_offers(self):
+        # The board queues these ids; an unmapped one would silently do nothing.
+        self.assertEqual(set(companion.DEFAULT_ACTION_KEYS),
+                         {"voice", "mode", "cancel"})
+
+
+class _FakeProc:
+    returncode = 0
+
+
 if __name__ == "__main__":
     unittest.main()

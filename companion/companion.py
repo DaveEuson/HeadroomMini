@@ -34,6 +34,7 @@ import socket
 import ssl
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -647,6 +648,11 @@ def load_config():
                         if k in data})
             if data.get("plan") in PLAN_PRESETS:
                 cfg["plan"] = data["plan"]
+            # Optional: remap what the board's Actions screen types, e.g.
+            # {"action_keys": {"cancel": "ctrl+c"}}
+            if isinstance(data.get("action_keys"), dict):
+                cfg["action_keys"] = {str(k): str(v) for k, v
+                                      in data["action_keys"].items()}
         except (OSError, ValueError) as exc:
             print(f"Ignoring bad companion.config.json: {exc}", file=sys.stderr)
     # Estimation budgets: start from the plan preset, then apply any overrides.
@@ -729,6 +735,139 @@ def run_once(cfg):
     return True, 0, False
 
 
+# ---- Actions: a tap on the board becomes a keystroke on this computer ------
+#
+# Off unless you pass --actions. Synthesising keypresses is a real capability,
+# so it is never enabled behind your back. The board only ever queues an action
+# when someone physically taps its screen — nothing on the network can inject
+# one — but the keystroke lands in whatever window happens to be focused here,
+# which is why this is opt-in.
+
+DEFAULT_ACTION_KEYS = {
+    "voice": "space",         # Claude Code voice mode
+    "mode": "shift+tab",      # cycle mode
+    "cancel": "escape",       # interrupt
+}
+ACTION_POLL_SECS = 1.0        # a button has to feel immediate
+ACTION_ERROR_BACKOFF = 5.0    # board unreachable: stop hammering it
+
+
+_MODIFIERS = {"shift", "ctrl", "alt", "cmd"}
+
+
+def _has_real_key(parts):
+    """A combo must contain something other than modifiers — 'shift' on its own
+    isn't a shortcut, and silently pressing a bare modifier looks like a bug."""
+    return any(p not in _MODIFIERS for p in parts)
+
+
+def _send_keys_windows(combo):
+    import ctypes
+    VK = {"space": 0x20, "tab": 0x09, "shift": 0x10, "ctrl": 0x11,
+          "alt": 0x12, "escape": 0x1B, "enter": 0x0D}
+    parts = [p.strip().lower() for p in combo.split("+") if p.strip()]
+    if not _has_real_key(parts):
+        return False
+    codes = []
+    for p in parts:
+        if p in VK:
+            codes.append(VK[p])
+        elif len(p) == 1 and p.isalnum():   # plain letters/digits: VK == ASCII
+            codes.append(ord(p.upper()))
+        else:
+            return False
+    user32 = ctypes.windll.user32
+    for code in codes:                       # press in order
+        user32.keybd_event(code, 0, 0, 0)
+    for code in reversed(codes):             # release in reverse
+        user32.keybd_event(code, 0, 2, 0)    # 2 = KEYEVENTF_KEYUP
+    return True
+
+
+def _send_keys_macos(combo):
+    # Needs Accessibility permission for whatever runs this (Terminal, or the
+    # packaged app): System Settings -> Privacy & Security -> Accessibility.
+    CODE = {"space": 49, "tab": 48, "escape": 53, "enter": 36}
+    MOD = {"shift": "shift down", "ctrl": "control down",
+           "alt": "option down", "cmd": "command down"}
+    parts = [p.strip().lower() for p in combo.split("+") if p.strip()]
+    mods = [MOD[p] for p in parts if p in MOD]
+    rest = [p for p in parts if p not in MOD]
+    if len(rest) != 1:
+        return False
+    key = rest[0]
+    using = f" using {{{', '.join(mods)}}}" if mods else ""
+    if key in CODE:
+        target = f"key code {CODE[key]}"
+    elif len(key) == 1 and key.isalnum():   # plain character
+        target = f'keystroke "{key}"'
+    else:
+        return False
+    script = f'tell application "System Events" to {target}{using}'
+    subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
+    return True
+
+
+def _send_keys_linux(combo):
+    XDO = {"space": "space", "tab": "Tab", "escape": "Escape",
+           "enter": "Return", "shift": "shift", "ctrl": "ctrl", "alt": "alt"}
+    parts = [p.strip().lower() for p in combo.split("+") if p.strip()]
+    if not _has_real_key(parts):
+        return False
+    keys = []
+    for p in parts:
+        if p in XDO:
+            keys.append(XDO[p])
+        elif len(p) == 1 and p.isalnum():   # xdotool takes plain chars as-is
+            keys.append(p)
+        else:
+            return False
+    subprocess.run(["xdotool", "key", "+".join(keys)],
+                   capture_output=True, timeout=5)
+    return True
+
+
+def send_keys(combo):
+    """Type a combo like 'shift+tab' here. Returns True if it was delivered."""
+    try:
+        if sys.platform.startswith("win"):
+            return _send_keys_windows(combo)
+        if sys.platform == "darwin":
+            return _send_keys_macos(combo)
+        return _send_keys_linux(combo)
+    except FileNotFoundError:
+        print("Actions need 'xdotool' installed to send keystrokes "
+              "(sudo apt install xdotool).", file=sys.stderr)
+        return False
+    except Exception as exc:  # noqa: BLE001
+        print(f"Couldn't send keystroke: {exc}", file=sys.stderr)
+        return False
+
+
+def poll_actions(url, token, keymap):
+    """Collect button presses from the board and replay them as keystrokes.
+    Runs forever; intended for a daemon thread."""
+    url = url.rstrip("/") + "/api/actions"
+    headers = {"X-Push-Token": token} if token else {}
+    while True:
+        delay = ACTION_POLL_SECS
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            for name in data.get("actions") or []:
+                combo = keymap.get(name)
+                if not combo:
+                    print(f"(board asked for unknown action {name!r})",
+                          file=sys.stderr)
+                    continue
+                if send_keys(combo):
+                    print(f"action: {name} -> {combo}")
+        except (urllib.error.URLError, OSError, ValueError):
+            delay = ACTION_ERROR_BACKOFF     # board asleep/offline; try later
+        time.sleep(delay)
+
+
 LOCK_PORT = 47823   # localhost mutex so two companions can't double-poll
 
 
@@ -763,6 +902,10 @@ def main():
     ap.add_argument("--pair-code", default=None, metavar="CODE",
                     help="the code shown on the board's screen (otherwise you "
                          "are prompted for it during --pair)")
+    ap.add_argument("--actions", action="store_true",
+                    help="let the board's Actions screen send keystrokes to "
+                         "this computer (off by default; the keypress lands in "
+                         "whatever window is focused here)")
     ap.add_argument("--no-install", action="store_true",
                     help="don't add to startup")
     ap.add_argument("--uninstall", action="store_true",
@@ -812,6 +955,15 @@ def main():
         return
 
     print(f"Headroom companion -> {cfg['pi']} (every {cfg['interval']}s)")
+    if args.actions:
+        # First target only: keystrokes land on this computer, so a second
+        # board sending them here would just be two remotes for one keyboard.
+        board = str(cfg["pi"]).split(",")[0].strip()
+        keymap = dict(DEFAULT_ACTION_KEYS)
+        keymap.update(cfg.get("action_keys") or {})
+        threading.Thread(target=poll_actions, daemon=True,
+                         args=(board, cfg["token"], keymap)).start()
+        print(f"Actions enabled: taps on {board} will type here.")
     first_ok, _, _ = run_once(cfg)
     if first_ok and not args.no_install and not os.path.isfile(INSTALLED_MARKER):
         try:

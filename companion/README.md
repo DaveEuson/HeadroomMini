@@ -119,6 +119,41 @@ timing and usage amounts are still accurate, just the % is a guess.
 **Requires Claude Code signed in on this computer** for live numbers. If Sparko's
 "Fuel" widget works for you, you already have this.
 
+## Actions: use the board as a shortcut pad
+
+The board's **Actions** screen can send keystrokes to the computer running
+Claude Code — swipe up/down to pick a shortcut, tap to fire it. Defaults:
+
+| Action | Sends | For |
+|---|---|---|
+| Voice mode | `space` | Claude Code voice mode |
+| Mode toggle | `shift+tab` | cycle mode |
+| Interrupt | `escape` | stop the current run |
+
+**It is off unless you ask for it:**
+
+```bash
+python companion.py --actions
+```
+
+Synthesising keypresses is a real capability, so it is never enabled behind
+your back. The keystroke lands in **whatever window is focused** on this
+computer, so keep that in mind before enabling it. The board only queues an
+action when someone physically taps its screen — nothing on the network can
+inject one — and unclaimed presses expire after 15 seconds so a tap made while
+the companion was closed can't fire later.
+
+Remap what each button types via `companion.config.json`:
+
+```json
+{ "action_keys": { "cancel": "ctrl+c" } }
+```
+
+Platform notes: **Windows** works out of the box; **macOS** needs Accessibility
+permission for whatever runs the companion (System Settings → Privacy &
+Security → Accessibility); **Linux** needs `xdotool` (`sudo apt install
+xdotool`).
+
 ## Troubleshooting
 
 Hitting "login expired", a 404 / "couldn't reach the board", "rate limited", or

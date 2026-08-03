@@ -178,10 +178,35 @@ static char      tzEnv[48]   = "EST5EDT,M3.2.0,M11.1.0";  // POSIX TZ, set via /
 static bool      clock24     = false; // false = 12-hour (3:45 PM), true = 24-hour
 static bool      nightDim    = true;  // ease the backlight down overnight
 static const uint8_t NIGHT_LEVEL = 40;
-static int       uiScreen    = 0;     // 0 meters 1 focus 2 history 3 sprocket 4 timer
-static const int UI_SCREENS  = 5;
-static const char *SCREEN_NAMES[UI_SCREENS] = {"Meters", "Focus", "History", "Sprocket", "Timer"};
-static uint8_t   screenMask  = 0x1F;  // bit i set = screen i is in the rotation
+static int       uiScreen    = 0;     // 0 meters 1 focus 2 history 3 sprocket 4 timer 5 actions
+static const int UI_SCREENS  = 6;
+static const char *SCREEN_NAMES[UI_SCREENS] =
+    {"Meters", "Focus", "History", "Sprocket", "Timer", "Actions"};
+static uint8_t   screenMask  = 0x3F;  // bit i set = screen i is in the rotation
+
+// ---- Actions: the board as an input device -------------------------------
+// The Actions screen queues a shortcut; the companion polls /api/actions and
+// synthesises the keystroke on the computer running Claude Code. The board
+// never types anything itself and only ever queues on a physical touch, so
+// nothing on the network can inject a keypress. The companion must be started
+// with --actions to act on them at all.
+struct ActionDef { const char *id; const char *label; const char *keys; };
+static const ActionDef ACTIONS[] = {
+    {"voice",  "Voice mode",  "Space"},
+    {"mode",   "Mode toggle", "Shift+Tab"},
+    {"cancel", "Interrupt",   "Esc"},
+};
+static const int N_ACTIONS = sizeof(ACTIONS) / sizeof(ACTIONS[0]);
+static int actionSel = 0;             // which action a tap will fire
+
+// Pending presses, collected until the companion polls. Entries expire so a
+// press made while the companion was closed can't fire minutes later.
+static const int  ACTION_Q_MAX = 4;
+static const unsigned long ACTION_TTL_MS = 15000;
+static const char *actionQ[ACTION_Q_MAX];
+static unsigned long actionQAt[ACTION_Q_MAX];
+static int actionQN = 0;
+static unsigned long lastActionPollMs = 0;   // last time a companion asked
 static time_t    timerResetAt = 0;    // reset time the Timer screen is counting to
 static int       mascotShownMood = -2; // mood the caption/screen is currently drawn for
 static int       mascotFrame  = 0;    // animation frame counter (Sprocket screen)
@@ -819,6 +844,63 @@ static void drawTimer() {
   drawCentered("H : MM : SS", 214, 1, C_MUTED);
 }
 
+// ---- Actions screen ------------------------------------------------------
+
+// Queue the selected shortcut for the companion to pick up. Oldest is dropped
+// if nobody is collecting, so the queue can't grow unbounded.
+static void queueAction(const char *id) {
+  if (actionQN >= ACTION_Q_MAX) {
+    for (int i = 1; i < ACTION_Q_MAX; i++) {
+      actionQ[i - 1] = actionQ[i];
+      actionQAt[i - 1] = actionQAt[i];
+    }
+    actionQN = ACTION_Q_MAX - 1;
+  }
+  actionQ[actionQN] = id;
+  actionQAt[actionQN] = millis();
+  actionQN++;
+}
+
+// Drop presses the companion never collected in time.
+static void expireActions() {
+  int keep = 0;
+  for (int i = 0; i < actionQN; i++)
+    if (millis() - actionQAt[i] < ACTION_TTL_MS) {
+      actionQ[keep] = actionQ[i];
+      actionQAt[keep] = actionQAt[i];
+      keep++;
+    }
+  actionQN = keep;
+}
+
+// True while a companion is actively polling, so the screen can say whether a
+// press will land anywhere.
+static bool actionsListening() {
+  return lastActionPollMs && (millis() - lastActionPollMs) < 10000;
+}
+
+static void drawActions() {
+  gfx->fillScreen(C_BG);
+  drawUpdateBadge(222, 20);
+  drawCentered("Actions", 34, 3, C_INK);
+  drawCentered("tap to send to Claude Code", 72, 1, C_MUTED);
+
+  int y = 108;
+  for (int i = 0; i < N_ACTIONS; i++) {
+    bool sel = (i == actionSel);
+    if (sel) gfx->fillRoundRect(14, y - 8, 212, 46, 10, C_ACC_T);
+    drawCentered(ACTIONS[i].label, y, 2, sel ? C_ACC : C_MUTED);
+    drawCentered(ACTIONS[i].keys, y + 22, 1, C_MUTED);
+    y += 56;
+  }
+
+  drawCentered("swipe up/down to choose", 288, 1, C_MUTED);
+  if (actionsListening())
+    drawCentered("companion connected", 304, 1, C_ACC);
+  else
+    drawCentered("run companion with --actions", 304, 1, C_WARN);
+}
+
 // Draw whichever screen is active (data updates / ticks call this).
 static bool pairingActive();   // defined with the pairing handlers below
 static void drawPairScreen();
@@ -831,6 +913,7 @@ static void drawScreen() {
   else if (uiScreen == 2) drawHistory();
   else if (uiScreen == 3) drawMascot();
   else if (uiScreen == 4) drawTimer();
+  else if (uiScreen == 5) drawActions();
   else                    drawMeters();
 }
 
@@ -1332,6 +1415,7 @@ static void loadCreds() {
   rotateSecs = prefs.getInt("rots", 0);
   pushToken  = prefs.getString("ptok", "");
   bool timerMigrated = prefs.getBool("tmrmig", false);
+  bool actionsMigrated = prefs.getBool("actmig", false);
   prefs.end();
   selfHosted = accessTok.length() > 0;
   if (defaultScreen < 0 || defaultScreen >= UI_SCREENS) defaultScreen = 0;
@@ -1344,6 +1428,15 @@ static void loadCreds() {
     prefs.begin("headroom", false);
     prefs.putUChar("smask", screenMask);
     prefs.putBool("tmrmig", true);
+    prefs.end();
+  }
+  // Same one-time reveal for the Actions screen. The screen itself is inert
+  // until you run the companion with --actions, so showing it is harmless.
+  if (!actionsMigrated) {
+    screenMask |= (1 << 5);
+    prefs.begin("headroom", false);
+    prefs.putUChar("smask", screenMask);
+    prefs.putBool("actmig", true);
     prefs.end();
   }
   uiScreen = defaultScreen;                 // boot on the chosen screen
@@ -1877,6 +1970,23 @@ static void drawPairScreen() {
   drawCentered("expires in 3 minutes", 210, 1, C_MUTED);
 }
 
+// GET /api/actions — hand over any shortcuts pressed since the last poll and
+// clear them. Read-only from the network's point of view: presses are only
+// ever created by a physical touch on the board.
+static void handleActions() {
+  if (!apiAuthed()) { denyUnauthed(); return; }
+  lastActionPollMs = millis();
+  expireActions();
+  String out = "{\"actions\":[";
+  for (int i = 0; i < actionQN; i++) {
+    if (i) out += ",";
+    out += "\""; out += actionQ[i]; out += "\"";
+  }
+  out += "]}";
+  actionQN = 0;                       // delivered; don't repeat them
+  sendJson(200, out);
+}
+
 static void handlePairStart() {
   // Anyone on the LAN can ask the board to enter pairing mode, but the code is
   // shown ONLY on the physical screen — an impostor board can't display it.
@@ -2369,6 +2479,26 @@ static void bumpBrightness(int d) {
 static void dispatchGesture(uint8_t g) {
   lastUserTouch = millis();                 // pause auto-rotate while you interact
   if (screenOff) { wake(); return; }        // a dimmed screen wakes on any touch
+
+  // The Actions screen rebinds tap and up/down: a tap has to *do* something
+  // there rather than page away, and up/down picks which shortcut to send.
+  // Left/right still change screens, so there's always a way out.
+  if (uiScreen == 5 && !pairingActive()) {
+    switch (g) {
+      case 0x01: actionSel = (actionSel + N_ACTIONS - 1) % N_ACTIONS;
+                 drawActions(); return;                   // swipe up   -> previous
+      case 0x02: actionSel = (actionSel + 1) % N_ACTIONS;
+                 drawActions(); return;                   // swipe down -> next
+      case 0x03: cycleScreen(-1); return;
+      case 0x04: cycleScreen(+1); return;
+      case 0x0C: cycleScreen(+1); return;                 // long press -> leave
+      default:                                            // tap -> fire it
+        queueAction(ACTIONS[actionSel].id);
+        drawCentered("sent", 288, 1, C_ACC);
+        return;
+    }
+  }
+
   switch (g) {
     case 0x0C: toggleUsedMode();   break;   // long press -> % left / % used
     case 0x01: bumpBrightness(+40); break;  // swipe up   -> brighter
@@ -2463,6 +2593,7 @@ static void startPortal() {
 static void startApi() {
   server = new WebServer(API_PORT);
   server->on("/api/status", HTTP_GET, handleStatus);
+  server->on("/api/actions", HTTP_GET, handleActions);
   server->on("/api/push", HTTP_POST, handlePush);
   server->on("/api/pair", HTTP_POST, handlePair);
   server->on("/api/pair/start", HTTP_POST, handlePairStart);
