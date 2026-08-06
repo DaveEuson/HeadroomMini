@@ -2,13 +2,36 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Headroom Mini — Setup</title>
 <meta name="description" content="Flash and set up your Headroom Mini in the browser — no VS Code, no command line.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://daveeuson.github.io/HeadroomMini/">
+<meta property="og:title" content="Headroom Mini — Setup">
+<meta property="og:description" content="Your Claude usage, on your desk. Flash it in the browser — no VS Code, no command line.">
+<meta property="og:image" content="https://daveeuson.github.io/HeadroomMini/img/meters.jpg">
+<meta property="og:image:alt" content="Headroom Mini on a desk, showing session and weekly usage meters.">
+<meta name="twitter:card" content="summary_large_image">
+<noscript><style>
+  /* Without JS the element never upgrades, so the "Starting the flasher…"
+     placeholder would sit there forever next to the no-JS message below. */
+  esp-web-install-button:not(:defined)>*{display:none}
+  esp-web-install-button:not(:defined)::after{content:none}
+</style></noscript>
 <style>
   :root{
-    --bg:#f0eee6; --card:#faf9f5; --ink:#3d3929; --muted:#7d7a6d;
-    --acc:#d97757; --acc-ink:#fff; --line:rgba(61,57,41,.14);
+    /* Committed light surface: declare it so UA controls and scrollbars don't
+       get dark-mode chrome against the cream. */
+    color-scheme:light;
+    --bg:#f0eee6; --card:#faf9f5; --raised:#fff; --tint:#fbeee8;
+    --ink:#3d3929; --muted:#6b6759; --line:rgba(61,57,41,.14);
+    /* One terracotta, three jobs, because a single value can't do all three at
+       AA on cream. --acc is a surface colour (3.1:1 as text — never text).
+       --acc-deep carries white at 4.7:1: the primary action and step badges.
+       --acc-text is 5.1:1 on the page and 5.7:1 on cards: anything you read. */
+    --acc:#d97757; --acc-deep:#ba5532; --acc-text:#a8442a;
+    --acc-ink:#fff;
+    --err:#b4442a;
   }
   *{box-sizing:border-box}
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
@@ -21,8 +44,9 @@
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
     padding:22px 20px;margin:16px 0;box-shadow:0 1px 2px rgba(61,57,41,.05)}
   .step{display:flex;align-items:baseline;gap:10px;margin:0 0 12px}
+  /* 15.2px bold isn't WCAG-large, so these need the full 4.5:1, not 3:1. */
   .num{flex:0 0 28px;height:28px;line-height:28px;text-align:center;
-    background:var(--acc);color:var(--acc-ink);border-radius:50%;
+    background:var(--acc-deep);color:var(--acc-ink);border-radius:50%;
     font-weight:700;font-size:.95rem}
   h2{font-size:1.2rem;margin:0}
   p{margin:.5rem 0}
@@ -30,39 +54,134 @@
   code{background:rgba(61,57,41,.07);padding:2px 6px;border-radius:6px;
     font-size:.92em}
   .center{text-align:center}
-  esp-web-install-button{--esp-tools-button-color:var(--acc-ink);
-    --esp-tools-button-background-color:var(--acc)}
-  .btnrow{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 4px}
-  .dl{flex:1 1 30%;min-width:140px;text-align:center;text-decoration:none;
-    background:#fff;color:var(--ink);border:1px solid var(--line);
-    border-radius:10px;padding:12px 8px;font-weight:600}
+  /* The library only ever reads these three names, and only for its own
+     fallback button inside the shadow root — the one below replaces it. */
+  esp-web-install-button{display:block;--esp-tools-button-color:var(--acc-deep);
+    --esp-tools-button-text-color:var(--acc-ink);
+    --esp-tools-button-border-radius:12px}
+  /* The slotted button lives in the light DOM: no ::slotted() rule in the
+     vendor sheet reaches it, so it inherits nothing unless we style it here. */
+  esp-web-install-button button[slot="activate"]{font-family:inherit;
+    font-size:1.15rem;font-weight:700;line-height:1;
+    display:block;width:100%;max-width:340px;margin:0 auto;padding:17px 28px;
+    background:var(--acc-deep);color:var(--acc-ink);border:0;border-radius:12px;
+    cursor:pointer;box-shadow:0 2px 8px rgba(122,52,26,.28);
+    transition:filter .15s ease-out,transform .15s ease-out}
+  esp-web-install-button button[slot="activate"]:hover{filter:brightness(1.08)}
+  esp-web-install-button button[slot="activate"]:active{transform:translateY(1px);
+    box-shadow:0 1px 4px rgba(122,52,26,.28)}
+  /* Deliberate override of the global ring below: terracotta-on-terracotta
+     wouldn't read, so the button's ring stays ink. */
+  esp-web-install-button button[slot="activate"]:focus-visible{
+    outline:3px solid var(--ink);outline-offset:3px}
+  /* Until the module upgrades the element, all three slots render at once.
+     Hide them rather than flash a live-looking button that does nothing. */
+  esp-web-install-button:not(:defined)>*{visibility:hidden}
+  esp-web-install-button:not(:defined)::after{content:"Starting the flasher…";
+    color:var(--muted);font-size:.95rem}
+  /* …but not forever. If the module never arrives, say so and offer a way out
+     rather than leaving a placeholder that looks like it's still working. */
+  #flash-failed{display:none;margin-top:12px}
+  .flash-failed esp-web-install-button:not(:defined)::after{content:none}
+  /* Collapse the reserved button space too, or the error sits under a hole. */
+  .flash-failed esp-web-install-button:not(:defined){display:none}
+  .flash-failed #flash-failed{display:block}
+  .flash-failed #port-hint{display:none}
+  .btnrow{display:grid;grid-template-columns:1fr;gap:10px;margin:14px 0 4px}
+  @media (min-width:520px){.btnrow{grid-template-columns:repeat(3,1fr)}}
+  .dl{text-align:center;text-decoration:none;background:var(--raised);
+    color:var(--ink);border:1px solid var(--line);border-radius:10px;
+    padding:12px 8px;font-weight:500;transition:border-color .15s ease-out}
+  .dl:hover{border-color:var(--acc)}
   .dl small{display:block;font-weight:400;color:var(--muted);font-size:.8rem}
-  .note{background:#fbeee8;border:1px solid rgba(217,119,87,.3);
+  /* Three kinds of aside, previously all identical: .note is a requirement you
+     must act on, .buy is the shopping prompt, .aside is optional and quieter.
+     Equal weight for unequal importance is why they all got skimmed. */
+  .note,.buy{background:var(--tint);border:1px solid rgba(217,119,87,.3);
     border-radius:10px;padding:10px 14px;font-size:.93rem;margin:12px 0}
-  .unsupported{color:#b4442a;font-weight:600}
-  details{margin-top:10px}summary{cursor:pointer;font-weight:600}
+  .aside{background:transparent;border:1px solid var(--line);border-radius:10px;
+    padding:10px 14px;font-size:.93rem;margin:12px 0;color:var(--muted)}
+  .aside strong{color:var(--ink)}
+  /* FTC disclosure sits with the link it discloses, not four screens below. */
+  .buy small{display:block;margin-top:4px}
+  .unsupported{color:var(--err);font-weight:600}
+  /* 24px tall was under any usable thumb target; padding takes it to 44.
+     Not display:flex — that would drop the disclosure triangle. */
+  details{margin-top:10px}summary{cursor:pointer;font-weight:600;padding:10px 0}
   details p,details li{font-size:.93rem}
+  /* Short link phrases fragmented across two lines at phone widths, leaving a
+     17px-wide hit sliver on "on Amazon". */
+  .nb{white-space:nowrap}
+  @media (pointer:coarse){.note a,footer a{padding-block:4px}}
+  @supports(padding:env(safe-area-inset-left)){
+    body{padding-left:max(18px,env(safe-area-inset-left));
+      padding-right:max(18px,env(safe-area-inset-right));
+      padding-bottom:max(64px,env(safe-area-inset-bottom))}}
+  /* The handoff: shown only when the library says this browser can't flash —
+     its own signal, so no device sniffing. Covers phones, Safari/Firefox, and
+     insecure origins alike. In this state getting the link to a computer IS
+     the primary action, so it wears the same terracotta as the flash button. */
+  #no-flash{display:none;margin:16px 0 0;text-align:left;
+    border:1px solid var(--line);border-radius:12px;padding:16px}
+  esp-web-install-button[install-unsupported] ~ #no-flash{display:block}
+  /* No flash means no port picker — don't leave its instructions standing. */
+  esp-web-install-button[install-unsupported] ~ #port-hint{display:none}
+  #no-flash p{margin:0 0 12px;font-size:.95rem}
+  #page-url{display:block;overflow-wrap:anywhere;user-select:all;
+    background:rgba(61,57,41,.07);padding:10px 12px;border-radius:8px;
+    font-size:.88rem;margin-bottom:12px}
+  .handoff{display:flex;flex-wrap:wrap;gap:8px}
+  .handoff button,.handoff a{font-family:inherit;font-size:.95rem;
+    font-weight:600;padding:12px 18px;min-height:44px;border-radius:10px;
+    display:inline-flex;align-items:center;cursor:pointer;text-decoration:none;
+    transition:filter .15s ease-out,border-color .15s ease-out}
+  .handoff button{background:var(--acc-deep);color:var(--acc-ink);border:0}
+  .handoff button:hover{filter:brightness(1.08)}
+  .handoff button.done{background:var(--ink)}
+  .handoff a{background:var(--raised);color:var(--ink);
+    border:1px solid var(--line)}
+  .handoff a:hover{border-color:var(--acc)}
   footer{text-align:center;color:var(--muted);font-size:.9rem;margin-top:32px}
-  a{color:var(--acc)}
+  /* --acc is 2.7:1 on cream and can't carry text. */
+  a{color:var(--acc-text)}
+  /* One focus ring for every control, in the palette, instead of the near-black
+     UA default on three of seventeen. */
+  :focus-visible{outline:3px solid var(--acc-text);outline-offset:3px;
+    border-radius:4px}
+  /* Portrait 1054x1400, so cap it — at full card width it would be 790px tall
+     and read as a hero instead of a payoff. width/height attrs on the tag
+     reserve the ratio, so lazy-loading it can't shift the layout. */
+  .shot{display:block;width:100%;max-width:280px;height:auto;border-radius:12px;
+    border:1px solid var(--line);margin:18px auto 6px}
+  .caption{color:var(--muted);font-size:.85rem;text-align:center;margin:0}
+  .heart{color:var(--acc-text)}
+  /* Keep the state change, drop the movement — not a blanket 0.01ms kill, which
+     would strip feedback that's doing real work. */
+  @media (prefers-reduced-motion:reduce){
+    esp-web-install-button button[slot="activate"],.dl,.handoff button,
+    .handoff a{transition:none}
+    esp-web-install-button button[slot="activate"]:active{transform:none}}
 </style>
 </head>
 <body>
 <main>
   <header>
-    <svg width="72" height="72" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" aria-label="Sprocket, the Headroom Mini mascot" style="margin:0 auto 6px;display:block"><rect x="24" y="0" width="8" height="8" fill="#1A1816"/><rect x="56" y="0" width="8" height="8" fill="#1A1816"/><rect x="24" y="8" width="8" height="8" fill="#5F83A1"/><rect x="56" y="8" width="8" height="8" fill="#5F83A1"/><rect x="16" y="16" width="8" height="8" fill="#1A1816"/><rect x="24" y="16" width="8" height="8" fill="#1A1816"/><rect x="32" y="16" width="8" height="8" fill="#1A1816"/><rect x="40" y="16" width="8" height="8" fill="#1A1816"/><rect x="48" y="16" width="8" height="8" fill="#1A1816"/><rect x="56" y="16" width="8" height="8" fill="#1A1816"/><rect x="64" y="16" width="8" height="8" fill="#1A1816"/><rect x="8" y="24" width="8" height="8" fill="#1A1816"/><rect x="16" y="24" width="8" height="8" fill="#5F83A1"/><rect x="24" y="24" width="8" height="8" fill="#5F83A1"/><rect x="32" y="24" width="8" height="8" fill="#5F83A1"/><rect x="40" y="24" width="8" height="8" fill="#5F83A1"/><rect x="48" y="24" width="8" height="8" fill="#5F83A1"/><rect x="56" y="24" width="8" height="8" fill="#5F83A1"/><rect x="64" y="24" width="8" height="8" fill="#5F83A1"/><rect x="72" y="24" width="8" height="8" fill="#1A1816"/><rect x="8" y="32" width="8" height="8" fill="#1A1816"/><rect x="16" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="32" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="40" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="48" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="56" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="64" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="32" width="8" height="8" fill="#1A1816"/><rect x="8" y="40" width="8" height="8" fill="#1A1816"/><rect x="16" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="40" width="8" height="8" fill="#1A1816"/><rect x="32" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="40" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="48" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="56" y="40" width="8" height="8" fill="#1A1816"/><rect x="64" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="40" width="8" height="8" fill="#1A1816"/><rect x="8" y="48" width="8" height="8" fill="#1A1816"/><rect x="16" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="32" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="40" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="48" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="56" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="64" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="48" width="8" height="8" fill="#1A1816"/><rect x="8" y="56" width="8" height="8" fill="#1A1816"/><rect x="16" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="32" y="56" width="8" height="8" fill="#1A1816"/><rect x="40" y="56" width="8" height="8" fill="#1A1816"/><rect x="48" y="56" width="8" height="8" fill="#1A1816"/><rect x="56" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="64" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="56" width="8" height="8" fill="#1A1816"/><rect x="8" y="64" width="8" height="8" fill="#1A1816"/><rect x="16" y="64" width="8" height="8" fill="#5F83A1"/><rect x="24" y="64" width="8" height="8" fill="#3F5F7A"/><rect x="32" y="64" width="8" height="8" fill="#5F83A1"/><rect x="40" y="64" width="8" height="8" fill="#5F83A1"/><rect x="48" y="64" width="8" height="8" fill="#5F83A1"/><rect x="56" y="64" width="8" height="8" fill="#3F5F7A"/><rect x="64" y="64" width="8" height="8" fill="#5F83A1"/><rect x="72" y="64" width="8" height="8" fill="#1A1816"/><rect x="8" y="72" width="8" height="8" fill="#1A1816"/><rect x="16" y="72" width="8" height="8" fill="#5F83A1"/><rect x="24" y="72" width="8" height="8" fill="#5F83A1"/><rect x="32" y="72" width="8" height="8" fill="#5F83A1"/><rect x="40" y="72" width="8" height="8" fill="#5F83A1"/><rect x="48" y="72" width="8" height="8" fill="#5F83A1"/><rect x="56" y="72" width="8" height="8" fill="#5F83A1"/><rect x="64" y="72" width="8" height="8" fill="#5F83A1"/><rect x="72" y="72" width="8" height="8" fill="#1A1816"/><rect x="16" y="80" width="8" height="8" fill="#1A1816"/><rect x="24" y="80" width="8" height="8" fill="#1A1816"/><rect x="56" y="80" width="8" height="8" fill="#1A1816"/><rect x="64" y="80" width="8" height="8" fill="#1A1816"/></svg>
+    <svg width="72" height="72" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" role="img" aria-label="Sprocket, the Headroom Mini mascot" style="margin:0 auto 6px;display:block"><rect x="24" y="0" width="8" height="8" fill="#1A1816"/><rect x="56" y="0" width="8" height="8" fill="#1A1816"/><rect x="24" y="8" width="8" height="8" fill="#5F83A1"/><rect x="56" y="8" width="8" height="8" fill="#5F83A1"/><rect x="16" y="16" width="8" height="8" fill="#1A1816"/><rect x="24" y="16" width="8" height="8" fill="#1A1816"/><rect x="32" y="16" width="8" height="8" fill="#1A1816"/><rect x="40" y="16" width="8" height="8" fill="#1A1816"/><rect x="48" y="16" width="8" height="8" fill="#1A1816"/><rect x="56" y="16" width="8" height="8" fill="#1A1816"/><rect x="64" y="16" width="8" height="8" fill="#1A1816"/><rect x="8" y="24" width="8" height="8" fill="#1A1816"/><rect x="16" y="24" width="8" height="8" fill="#5F83A1"/><rect x="24" y="24" width="8" height="8" fill="#5F83A1"/><rect x="32" y="24" width="8" height="8" fill="#5F83A1"/><rect x="40" y="24" width="8" height="8" fill="#5F83A1"/><rect x="48" y="24" width="8" height="8" fill="#5F83A1"/><rect x="56" y="24" width="8" height="8" fill="#5F83A1"/><rect x="64" y="24" width="8" height="8" fill="#5F83A1"/><rect x="72" y="24" width="8" height="8" fill="#1A1816"/><rect x="8" y="32" width="8" height="8" fill="#1A1816"/><rect x="16" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="32" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="40" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="48" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="56" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="64" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="32" width="8" height="8" fill="#1A1816"/><rect x="8" y="40" width="8" height="8" fill="#1A1816"/><rect x="16" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="40" width="8" height="8" fill="#1A1816"/><rect x="32" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="40" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="48" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="56" y="40" width="8" height="8" fill="#1A1816"/><rect x="64" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="40" width="8" height="8" fill="#1A1816"/><rect x="8" y="48" width="8" height="8" fill="#1A1816"/><rect x="16" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="32" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="40" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="48" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="56" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="64" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="48" width="8" height="8" fill="#1A1816"/><rect x="8" y="56" width="8" height="8" fill="#1A1816"/><rect x="16" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="32" y="56" width="8" height="8" fill="#1A1816"/><rect x="40" y="56" width="8" height="8" fill="#1A1816"/><rect x="48" y="56" width="8" height="8" fill="#1A1816"/><rect x="56" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="64" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="56" width="8" height="8" fill="#1A1816"/><rect x="8" y="64" width="8" height="8" fill="#1A1816"/><rect x="16" y="64" width="8" height="8" fill="#5F83A1"/><rect x="24" y="64" width="8" height="8" fill="#3F5F7A"/><rect x="32" y="64" width="8" height="8" fill="#5F83A1"/><rect x="40" y="64" width="8" height="8" fill="#5F83A1"/><rect x="48" y="64" width="8" height="8" fill="#5F83A1"/><rect x="56" y="64" width="8" height="8" fill="#3F5F7A"/><rect x="64" y="64" width="8" height="8" fill="#5F83A1"/><rect x="72" y="64" width="8" height="8" fill="#1A1816"/><rect x="8" y="72" width="8" height="8" fill="#1A1816"/><rect x="16" y="72" width="8" height="8" fill="#5F83A1"/><rect x="24" y="72" width="8" height="8" fill="#5F83A1"/><rect x="32" y="72" width="8" height="8" fill="#5F83A1"/><rect x="40" y="72" width="8" height="8" fill="#5F83A1"/><rect x="48" y="72" width="8" height="8" fill="#5F83A1"/><rect x="56" y="72" width="8" height="8" fill="#5F83A1"/><rect x="64" y="72" width="8" height="8" fill="#5F83A1"/><rect x="72" y="72" width="8" height="8" fill="#1A1816"/><rect x="16" y="80" width="8" height="8" fill="#1A1816"/><rect x="24" y="80" width="8" height="8" fill="#1A1816"/><rect x="56" y="80" width="8" height="8" fill="#1A1816"/><rect x="64" y="80" width="8" height="8" fill="#1A1816"/></svg>
     <h1>Headroom Mini</h1>
     <p class="tag">Your Claude usage, on your desk. Let's get it running.</p>
   </header>
 
-  <div class="note center">
-    🛒 Don't have the board yet? It runs on one ~$26
+  <div class="buy center">
+    Don't have the board yet? It runs on one ~$26
     <strong>Waveshare ESP32-S3-Touch-LCD-2</strong> —
-    <a href="https://www.amazon.com/dp/B0DTTL56ZR?tag=daveeuson01-20">on Amazon</a>
-    or <a href="https://www.waveshare.com/esp32-s3-touch-lcd-2.htm">direct from Waveshare</a>.
+    <a class="nb" rel="sponsored" href="https://www.amazon.com/dp/B0DTTL56ZR?tag=daveeuson01-20">on Amazon</a>
+    or <a class="nb" href="https://www.waveshare.com/esp32-s3-touch-lcd-2.htm">direct from Waveshare</a>.
+    <small class="muted">The Amazon link is an affiliate link — I earn a
+      commission on qualifying purchases.</small>
   </div>
 
   <div class="note center">
-    ⚙️ Setup runs best in <strong>Chrome</strong> or <strong>Edge</strong> on a
+    Setup runs best in <strong>Chrome</strong> or <strong>Edge</strong> on a
     <strong>computer</strong> (the browser flasher needs USB access). Phones and
     Safari/Firefox can't flash — but you'll only do this once.
   </div>
@@ -71,9 +190,9 @@
     <div class="step"><span class="num">1</span><h2>Flash the board</h2></div>
     <p>Plug the board into your computer with a <strong>data USB-C cable</strong>
       (a charge-only cable won't work), then:</p>
-    <p class="center">
+    <div class="center" id="flash-slot">
       <esp-web-install-button manifest="./firmware/manifest.json">
-        <button slot="activate">⚡ Connect &amp; Install</button>
+        <button slot="activate">Connect &amp; Install</button>
         <span slot="unsupported" class="unsupported">
           This browser can't flash — open this page in Chrome or Edge on a computer.
         </span>
@@ -81,9 +200,30 @@
           Not allowed over http — use the https link.
         </span>
       </esp-web-install-button>
-    </p>
-    <p class="muted center">Pick the board's port when asked, then <em>Install</em>.
-      Takes about a minute.</p>
+      <div id="no-flash">
+        <p>Send yourself the link and open it on a computer running Chrome or
+          Edge. That's the only step that needs one — everything after it works
+          from anywhere.</p>
+        <code id="page-url">https://daveeuson.github.io/HeadroomMini/</code>
+        <div class="handoff">
+          <button id="copy-url" type="button">Copy link</button>
+          <a href="mailto:?subject=Headroom%20Mini%20setup&amp;body=Open%20this%20on%20a%20computer%20in%20Chrome%20or%20Edge%3A%20https%3A%2F%2Fdaveeuson.github.io%2FHeadroomMini%2F">Email it to myself</a>
+        </div>
+      </div>
+      <p class="muted center" id="port-hint">Pick the board's port when asked,
+        then <em>Install</em>. Takes about a minute.</p>
+      <p class="unsupported" id="flash-failed">The flasher didn't load.
+        <a href="./index.html">Reload the page</a>, and if it still doesn't
+        appear, see the
+        <a href="https://github.com/DaveEuson/HeadroomMini/blob/main/docs/TROUBLESHOOTING.md">troubleshooting
+        guide</a>.</p>
+    </div>
+    <noscript>
+      <p class="unsupported">Browser flashing needs JavaScript. Turn it on for
+        this page, or see the
+        <a href="https://github.com/DaveEuson/HeadroomMini/blob/main/docs/TROUBLESHOOTING.md">troubleshooting
+        guide</a> for the other ways to install.</p>
+    </noscript>
     <details>
       <summary>Board not showing up?</summary>
       <p>Hold the <strong>BOOT</strong> button, tap <strong>RESET</strong>,
@@ -100,11 +240,13 @@
       cable you already have plugged in. <strong>No hotspot, no app.</strong></p>
     <p class="muted">The board reboots and shows its address on screen.</p>
     <details>
-      <summary>Setting up from a phone instead?</summary>
-      <p>If you're not at a computer: on the board's screen, join the Wi-Fi
-        named <code>Headroom-Setup</code> (password <code>headroom</code>),
-        open <code>http://192.168.4.1</code>, and tap your home network from
-        the list.</p>
+      <summary>Already flashed, but the board isn't on Wi-Fi?</summary>
+      <p>A flashed board with no network to join puts up its own Wi-Fi instead.
+        From a phone or a laptop, join the network named
+        <code>Headroom-Setup</code> (password <code>headroom</code>), open
+        <code>http://192.168.4.1</code>, and tap your home network from the
+        list. (That network only exists once step 1 is done — a board you
+        haven't flashed yet won't broadcast it.)</p>
     </details>
   </div>
 
@@ -112,12 +254,20 @@
     <div class="step"><span class="num">3</span><h2>Feed it your usage</h2></div>
     <p>Run the little companion on the computer where you use Claude Code. It
       reads your existing login and sends usage to the board — no extra sign-in.
-      Download it (no install, just double-click):</p>
+      Download it and open it; there's no installer to run:</p>
     <div class="btnrow">
       <a class="dl" href="https://github.com/DaveEuson/HeadroomMini/releases/latest/download/HeadroomCompanion-windows.exe">Windows<small>.exe</small></a>
       <a class="dl" href="https://github.com/DaveEuson/HeadroomMini/releases/latest/download/HeadroomCompanion-macos">macOS<small>Apple / Intel</small></a>
       <a class="dl" href="https://github.com/DaveEuson/HeadroomMini/releases/latest/download/HeadroomCompanion-linux">Linux<small>x86-64</small></a>
     </div>
+    <details>
+      <summary>Windows says &ldquo;protected your PC&rdquo;? macOS won't open it?</summary>
+      <p>Expected — the companion isn't code-signed yet, so both systems warn
+        on first launch. On <strong>Windows</strong>, click
+        <strong>More info → Run anyway</strong>. On <strong>macOS</strong>,
+        right-click the download and choose <strong>Open</strong> instead of
+        double-clicking. You only do this the first time.</p>
+    </details>
     <p class="muted">It finds the board on your network automatically. Within a
       minute or two the meters go live.</p>
     <div class="note">
@@ -128,27 +278,38 @@
       (check with <code>claude /usage</code>); the companion should then print
       <code>[LIVE]</code>, not <code>[estimated]</code>.
     </div>
-    <div class="note">
+    <div class="aside">
       <strong>Don't want to leave it running?</strong> Make the board
-      self-contained: run the companion once with <code>--pair</code> (it finds
-      the board automatically). It hands the board your login, and the board
-      polls your usage on its own from then on — no computer needed. (Best with
-      a spare Claude account, so it doesn't rotate your main login's token.)
+      self-contained: click the companion's icon in your menubar (macOS) or
+      system tray (Windows/Linux) and choose <strong>Pair board</strong>.
+      <strong>The board shows a short code on its screen — type that into the
+      companion</strong>, and only then does it take your login. From then on the
+      board polls your usage on its own, with no computer involved. (Best with a
+      spare Claude account, so it doesn't rotate your main login's token.)
     </div>
     <details>
       <summary>It didn't find the board?</summary>
-      <p>Point it straight at the address from step 2 by launching it from a
-        terminal with <code>--pi http://&lt;board-ip&gt;:8080</code>. Keep the
-        companion running (or set it to start with your computer) so the meters
-        stay fresh.</p>
+      <p><strong>First, check they're on the same Wi-Fi</strong> — the board and
+        this computer have to be on the same network, not a guest network, and
+        not behind a VPN. That's the usual cause.</p>
+      <p>If they are and it still can't find it, the
+        <a href="https://github.com/DaveEuson/HeadroomMini/blob/main/docs/TROUBLESHOOTING.md">troubleshooting
+        guide</a> covers pointing the companion straight at the address from
+        step 2. Otherwise just leave the companion running — it sets itself to
+        start with your computer, so the meters stay fresh.</p>
     </details>
+    <img class="shot" src="img/meters.jpg" width="1054" height="1400"
+      loading="lazy" decoding="async"
+      alt="Headroom Mini on a desk, showing labelled session and weekly usage
+           meters with the percentage left in each.">
+    <p class="caption">This is what you're aiming at.</p>
   </div>
 
   <footer>
-    That's it — no VS Code, no command line.<br>
+    That's it — no VS Code, no PlatformIO, nothing to build.<br>
     <a href="https://github.com/DaveEuson/HeadroomMini/blob/main/docs/TROUBLESHOOTING.md">Having trouble? Troubleshooting guide</a> ·
-    <a href="https://github.com/DaveEuson/HeadroomMini">Source &amp; docs on GitHub</a><br>
-    Made by Dave Euson with <span style="color:#d97757">&hearts;</span> in San Diego<br>
+    <a class="nb" href="https://github.com/DaveEuson/HeadroomMini">Source &amp; docs on GitHub</a><br>
+    Made by Dave Euson with <span class="heart">&hearts;</span> in San Diego<br>
     <small class="muted">&copy; 2026 Dave Euson · As an Amazon Associate I earn from qualifying purchases.</small>
   </footer>
 </main>
@@ -158,5 +319,37 @@
      hijacked CDN script could exfiltrate them or flash malicious firmware. -->
 <script type="module"
   src="./vendor/esp-web-tools/install-button.js"></script>
+<script>
+  // Copy-link handoff for the browsers that can't flash. Inline and dependency
+  // free, same reason the flasher is self-hosted: nothing external on a page
+  // that handles Wi-Fi credentials.
+  // The flasher module is self-hosted, but it can still fail to arrive: a bad
+  // deploy, an offline reload, an extension blocking module scripts. Give it a
+  // grace period, then swap the placeholder for a real error with a way out.
+  setTimeout(function () {
+    if (customElements.get('esp-web-install-button')) return;
+    document.getElementById('flash-slot').classList.add('flash-failed');
+  }, 8000);
+
+  (function () {
+    var btn = document.getElementById('copy-url');
+    var url = document.getElementById('page-url').textContent.trim();
+    // No clipboard API (older browsers, insecure origin): the URL above is
+    // still selectable, so drop the button rather than leave a dead one.
+    if (!navigator.clipboard) { btn.hidden = true; return; }
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(url).then(function () {
+        btn.textContent = 'Link copied';
+        btn.classList.add('done');
+        setTimeout(function () {
+          btn.textContent = 'Copy link';
+          btn.classList.remove('done');
+        }, 2400);
+      }, function () {
+        btn.textContent = 'Select the link above to copy';
+      });
+    });
+  })();
+</script>
 </body>
 </html>
