@@ -1141,7 +1141,13 @@ static void handleStatus() {
     o["key"] = windows[i].key;
     o["label"] = windows[i].label;
     o["utilization"] = windows[i].utilization;
+    o["resets_at"] = (long)windows[i].resets_at;
   }
+  // Which screen is up, so a failure to switch is diagnosable without
+  // standing over the board. Reset times likewise: a countdown that never
+  // counts is usually a reset time that never parsed.
+  doc["screen"] = uiScreen;
+  doc["screen_name"] = SCREEN_NAMES[uiScreen];
   doc["server_time"] = (long)time(nullptr);
   String out;
   serializeJson(doc, out);
