@@ -1148,10 +1148,10 @@ button{display:block;width:100%;background:#d97757;color:#fff;font-weight:600;fo
 #list{margin:6px 0 12px}
 .net{background:#fff;color:#3d3929;text-align:left;font-weight:500;font-size:1rem;padding:12px 14px;margin:6px 0;border:1px solid rgba(61,57,41,.18);border-radius:10px;display:flex;justify-content:space-between;align-items:center}
 .net.sel{border-color:#d97757;background:#fbeee8}
-.net .bars{color:#94907e;font-size:.85rem;margin-left:10px}
+.net .bars{color:#6b6759;font-size:.85rem;margin-left:10px}
 .row{display:flex;gap:8px;align-items:center;margin:6px 0}
 .row button{width:auto;padding:8px 12px;font-size:.9rem;background:#e9e6dc;color:#3d3929}
-.muted{color:#94907e;font-size:.9rem}</style>
+.muted{color:#6b6759;font-size:.9rem}</style>
 </head><body><div class="card">
 <h2>Connect Headroom to Wi-Fi</h2>
 <div class="row"><strong>Pick your network</strong>
@@ -1812,10 +1812,10 @@ static void handleUpdatePage() {
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:16px;max-width:460px;margin:0 auto}h2{margin:.2rem 0 .6rem}"
       "button{background:#d97757;color:#fff;font-weight:600;font-size:1rem;padding:12px 18px;"
-      "border:none;border-radius:10px}.muted{color:#94907e;font-size:.9rem}"
+      "border:none;border-radius:10px}.muted{color:#6b6759;font-size:.9rem}"
       "code{background:rgba(61,57,41,.07);padding:1px 6px;border-radius:5px}"
       "</style></head><body><div class=card>"
-      "<p style='margin:0 0 10px'><a href='/' style='color:#94907e;"
+      "<p style='margin:0 0 10px'><a href='/' style='color:#a8442a;"
       "text-decoration:none;font-weight:600'>&larr; Home</a></p>"
       "<h2>Firmware update</h2>");
   s += "<p>Installed: <code>v";
@@ -2064,8 +2064,8 @@ static void handleAlertsPage() {
       "border:1px solid rgba(61,57,41,.25);margin:4px 0 12px;box-sizing:border-box}"
       "button{background:#d97757;color:#fff;font-weight:600;font-size:1rem;padding:12px 18px;"
       "border:none;border-radius:10px}code{background:rgba(61,57,41,.07);padding:1px 5px;border-radius:5px}"
-      ".muted{color:#94907e;font-size:.85rem}</style></head><body><div class=card>"
-      "<p style='margin:0 0 10px'><a href='/' style='color:#94907e;"
+      ".muted{color:#6b6759;font-size:.85rem}</style></head><body><div class=card>"
+      "<p style='margin:0 0 10px'><a href='/' style='color:#a8442a;"
       "text-decoration:none;font-weight:600'>&larr; Home</a></p>"
       "<h2>Phone alerts</h2>"
       "<p>Get a push when a window gets high. Easiest is <b>ntfy</b>: install "
@@ -2153,9 +2153,9 @@ static void handleSettingsPage() {
       "select{width:100%;padding:11px;font-size:1rem;border-radius:10px;"
       "border:1px solid rgba(61,57,41,.25);margin:4px 0 12px;box-sizing:border-box;background:#fff}"
       "button{background:#d97757;color:#fff;font-weight:600;font-size:1rem;padding:12px 18px;"
-      "border:none;border-radius:10px}.muted{color:#94907e;font-size:.85rem}</style>"
+      "border:none;border-radius:10px}.muted{color:#6b6759;font-size:.85rem}</style>"
       "</head><body><div class=card>"
-      "<p style='margin:0 0 10px'><a href='/' style='color:#94907e;"
+      "<p style='margin:0 0 10px'><a href='/' style='color:#a8442a;"
       "text-decoration:none;font-weight:600'>&larr; Home</a></p><h2>Settings</h2>"
       "<form method=POST action=/settings><label>Time zone (for the clock)</label>"
       "<select name=tz>");
@@ -2317,7 +2317,7 @@ static void handleRoot() {
       "code{background:rgba(61,57,41,.07);padding:2px 6px;border-radius:6px;font-size:.9em;word-break:break-all}"
       "a.btn{display:inline-block;background:#d97757;color:#fff;text-decoration:none;"
       "font-weight:600;padding:11px 17px;border-radius:10px;margin:6px 8px 0 0}"
-      ".muted{color:#94907e;font-size:.9rem}summary{cursor:pointer}"
+      ".muted{color:#6b6759;font-size:.9rem}summary{cursor:pointer}"
       ".ava{background:#262624;border-radius:12px;padding:7px;flex:none}</style></head><body>"
       "<div class=card style='display:flex;align-items:center;gap:14px'>"
       "<div class=ava>");
