@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-06T00:00:00Z",
+  "title": "Design System: Headroom Mini",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Cream Paper",
+        "canonical": "#f0eee6",
+        "tonalRamp": ["#26241f", "#3d3929", "#565043", "#6b6759", "#948e7c", "#bdb8a8", "#dcd8cb", "#f0eee6"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#3d3929",
+        "tonalRamp": ["#16150f", "#25231a", "#3d3929", "#565043", "#6b6759", "#948e7c", "#c4bfae", "#eae7dc"]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#6b6759",
+        "tonalRamp": ["#1b1a16", "#2e2c25", "#454236", "#565043", "#6b6759", "#8d8878", "#b5b0a0", "#dedace"]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel Ground",
+        "canonical": "#262624",
+        "tonalRamp": ["#121211", "#1a1a19", "#262624", "#3a3a37", "#54544f", "#787871", "#a8a89f", "#d6d6cc"]
+      },
+      "terracotta": {
+        "role": "primary",
+        "displayName": "Terracotta",
+        "canonical": "#d97757",
+        "tonalRamp": ["#2e1509", "#4a2412", "#6b361c", "#8e4726", "#ba5532", "#d97757", "#eaa084", "#f7d3c4"]
+      },
+      "terracotta-deep": {
+        "role": "primary",
+        "displayName": "Deep Terracotta",
+        "canonical": "#ba5532",
+        "tonalRamp": ["#2b1109", "#451c0e", "#632814", "#84351a", "#a34428", "#ba5532", "#d98a6c", "#f0c4b2"]
+      },
+      "terracotta-text": {
+        "role": "primary",
+        "displayName": "Reading Terracotta",
+        "canonical": "#a8442a",
+        "tonalRamp": ["#280f08", "#3f180c", "#5b2311", "#7a2f17", "#98391f", "#a8442a", "#cd7c62", "#e8bcac"]
+      },
+      "stone": {
+        "role": "secondary",
+        "displayName": "Stone",
+        "canonical": "#8a8577",
+        "tonalRamp": ["#1f1e1a", "#333128", "#4a4739", "#625e4d", "#7a7565", "#8a8577", "#b0ac9e", "#d8d5cb"]
+      },
+      "amber": {
+        "role": "tertiary",
+        "displayName": "Amber",
+        "canonical": "#fab219",
+        "tonalRamp": ["#2e2003", "#463b1a", "#6b4c07", "#93680a", "#bb840d", "#e0a013", "#fab219", "#fdd67e"]
+      },
+      "crimson": {
+        "role": "tertiary",
+        "displayName": "Crimson",
+        "canonical": "#e05252",
+        "tonalRamp": ["#2e0f0f", "#4a2727", "#6b1f1f", "#8e2b2b", "#b53c3c", "#e05252", "#ee8b8b", "#f8c8c8"]
+      },
+      "error-text": {
+        "role": "tertiary",
+        "displayName": "Error Text",
+        "canonical": "#b4442a",
+        "tonalRamp": ["#2b1008", "#43190c", "#602512", "#803118", "#9c3b21", "#b4442a", "#d47f66", "#eec0b1"]
+      },
+      "sprocket-body": {
+        "role": "tertiary",
+        "displayName": "Sprocket Blue",
+        "canonical": "#5f83a1",
+        "tonalRamp": ["#101820", "#1c2b38", "#2b4256", "#3f5f7a", "#5f83a1", "#8aa8bf", "#b5ccdb", "#dde8ef"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The product name in the page header. Once per page." },
+      "headline": { "displayName": "Headline", "purpose": "Step titles inside cards." },
+      "body": { "displayName": "Body", "purpose": "Instructions, in a 640px column." },
+      "label": { "displayName": "Label", "purpose": "Notes, asides, and disclosure contents — the quieter supporting register." },
+      "action": { "displayName": "Action", "purpose": "The primary button only. Largest element after the h1." },
+      "panel-clock": { "displayName": "Panel Clock", "purpose": "Bitmap x4. The time on Meters; the biggest thing on the device." },
+      "panel-title": { "displayName": "Panel Title", "purpose": "Bitmap x3. Screen names and 'Set me up'." },
+      "panel-body": { "displayName": "Panel Body", "purpose": "Bitmap x2. Window labels, percentages, countdowns. The glance floor." },
+      "panel-caption": { "displayName": "Panel Caption", "purpose": "Bitmap x1. Freshness, plan name, IP hints. Never a live number." }
+    },
+    "shadows": [
+      { "name": "edge", "value": "0 1px 2px rgba(61,57,41,.05)", "purpose": "Every card. Keeps the 1px border from reading as a drawn line." },
+      { "name": "primary-lift", "value": "0 2px 8px rgba(122,52,26,.28)", "purpose": "The flash button and nothing else. The one real shadow in the system." },
+      { "name": "primary-lift-active", "value": "0 1px 4px rgba(122,52,26,.28)", "purpose": "Pressed state, paired with a 1px downward translate." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0, 0, 0.58, 1)", "purpose": "ease-out at 150ms — the only easing in the system, on filter, border-color, and transform." },
+      { "name": "duration-fast", "value": "150ms", "purpose": "All hover and press feedback." },
+      { "name": "confirm-hold", "value": "2400ms", "purpose": "How long the Copy-link button holds its 'Link copied' ink state before reverting." },
+      { "name": "flasher-grace", "value": "8000ms", "purpose": "How long the placeholder waits for the vendored flasher module before swapping to a real error with a way out." }
+    ],
+    "breakpoints": [
+      { "name": "download-row", "value": "520px" },
+      { "name": "column", "value": "640px" },
+      { "name": "panel", "value": "240x320" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single most important action on a surface. Carries the only real shadow in the system; its focus ring is ink, not terracotta.",
+      "html": "<button class=\"ds-btn-primary\">Connect &amp; Install</button>",
+      "css": ".ds-btn-primary{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:1.15rem;font-weight:700;line-height:1;display:block;width:100%;max-width:340px;margin:0 auto;padding:17px 28px;background:#ba5532;color:#fff;border:0;border-radius:12px;cursor:pointer;box-shadow:0 2px 8px rgba(122,52,26,.28);transition:filter .15s ease-out,transform .15s ease-out}.ds-btn-primary:hover{filter:brightness(1.08)}.ds-btn-primary:active{transform:translateY(1px);box-shadow:0 1px 4px rgba(122,52,26,.28)}.ds-btn-primary:focus-visible{outline:3px solid #3d3929;outline-offset:3px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Stone step-down for anything that is not the one primary action — Settings, Phone alerts, Disconnect.",
+      "html": "<button class=\"ds-btn-secondary\">Settings</button>",
+      "css": ".ds-btn-secondary{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:1rem;font-weight:600;padding:12px 18px;min-height:44px;background:#8a8577;color:#fff;border:0;border-radius:10px;cursor:pointer;transition:filter .15s ease-out}.ds-btn-secondary:hover{filter:brightness(1.08)}.ds-btn-secondary:focus-visible{outline:3px solid #a8442a;outline-offset:3px}"
+    },
+    {
+      "name": "Download Tile",
+      "kind": "button",
+      "refersTo": "download-tile",
+      "description": "Bordered white tile with a muted sub-label. Hover shifts the border to terracotta and leaves the fill alone.",
+      "html": "<a class=\"ds-tile\" href=\"#\">Windows<small>.exe</small></a>",
+      "css": ".ds-tile{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:block;text-align:center;text-decoration:none;background:#fff;color:#3d3929;border:1px solid rgba(61,57,41,.14);border-radius:10px;padding:12px 8px;font-weight:500;transition:border-color .15s ease-out}.ds-tile:hover{border-color:#d97757}.ds-tile small{display:block;font-weight:400;color:#6b6759;font-size:.8rem}.ds-tile:focus-visible{outline:3px solid #a8442a;outline-offset:3px}"
+    },
+    {
+      "name": "Step Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The setup page's structural unit: a numbered terracotta badge and headline on a shared baseline, over card cream with a hairline border.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-step\"><span class=\"ds-num\">1</span><h2 class=\"ds-h2\">Flash the board</h2></div><p class=\"ds-p\">Plug the board into your computer with a <strong>data USB-C cable</strong>.</p></div>",
+      "css": ".ds-card{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#faf9f5;color:#3d3929;border:1px solid rgba(61,57,41,.14);border-radius:16px;padding:22px 20px;box-shadow:0 1px 2px rgba(61,57,41,.05);line-height:1.5}.ds-step{display:flex;align-items:baseline;gap:10px;margin:0 0 12px}.ds-num{flex:0 0 28px;height:28px;line-height:28px;text-align:center;background:#ba5532;color:#fff;border-radius:50%;font-weight:700;font-size:.95rem}.ds-h2{font-size:1.2rem;margin:0}.ds-p{margin:.5rem 0}"
+    },
+    {
+      "name": "Note / Aside Pair",
+      "kind": "custom",
+      "refersTo": "note",
+      "description": "Three unequal weights of supporting block. Note is a requirement you must act on; Aside is genuinely optional and steps down to a transparent ground and muted text, with strong restored to full ink.",
+      "html": "<div class=\"ds-note\"><strong>Sign in to the Claude Code CLI first.</strong> The companion reads that login for your real numbers.</div><div class=\"ds-aside\"><strong>Don't want to leave it running?</strong> Make the board self-contained with <strong>Pair board</strong>.</div>",
+      "css": ".ds-note{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5;background:#fbeee8;border:1px solid rgba(217,119,87,.3);border-radius:10px;padding:10px 14px;font-size:.93rem;margin:12px 0;color:#3d3929}.ds-aside{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5;background:transparent;border:1px solid rgba(61,57,41,.14);border-radius:10px;padding:10px 14px;font-size:.93rem;margin:12px 0;color:#6b6759}.ds-aside strong{color:#3d3929}"
+    },
+    {
+      "name": "Network Row",
+      "kind": "input",
+      "refersTo": null,
+      "description": "The captive-portal Wi-Fi picker row. Selected state shifts the border to terracotta and the fill to blush tint rather than inverting.",
+      "html": "<div class=\"ds-net ds-net-sel\">EusonNetG<span class=\"ds-bars\">▂▄▆</span></div><div class=\"ds-net\">Guest<span class=\"ds-bars\">▂▄</span></div>",
+      "css": ".ds-net{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#fff;color:#3d3929;text-align:left;font-weight:500;font-size:1rem;padding:12px 14px;margin:6px 0;border:1px solid rgba(61,57,41,.18);border-radius:10px;display:flex;justify-content:space-between;align-items:center;cursor:pointer}.ds-net-sel{border-color:#d97757;background:#fbeee8}.ds-bars{color:#6b6759;font-size:.85rem;margin-left:10px}"
+    },
+    {
+      "name": "Headroom Meter",
+      "kind": "custom",
+      "refersTo": "meter-fill",
+      "description": "The product's signature object, shown at panel polarity. Tier is carried by three signals at once — fill color, fill length, and the literal percentage — so hue is never the sole carrier. Fill clamps to 8px minimum.",
+      "html": "<div class=\"ds-panel\"><div class=\"ds-meter\"><div class=\"ds-meter-head\"><span class=\"ds-meter-label\">Session (5h)</span><span class=\"ds-meter-pct\">93% left</span></div><div class=\"ds-track\"><div class=\"ds-fill\" style=\"width:93%\"></div></div><div class=\"ds-meter-foot\">resets in 4h 45m</div></div><div class=\"ds-meter\"><div class=\"ds-meter-head\"><span class=\"ds-meter-label\">Weekly</span><span class=\"ds-meter-pct\">24% left</span></div><div class=\"ds-track ds-track-warn\"><div class=\"ds-fill ds-fill-warn\" style=\"width:24%\"></div></div><div class=\"ds-meter-foot\">resets in 3d 18h</div></div><div class=\"ds-meter\"><div class=\"ds-meter-head\"><span class=\"ds-meter-label\">Weekly Opus</span><span class=\"ds-meter-pct\">7% left</span></div><div class=\"ds-track ds-track-crit\"><div class=\"ds-fill ds-fill-crit\" style=\"width:7%\"></div></div><div class=\"ds-meter-foot\">resets in 3d 18h</div></div></div>",
+      "css": ".ds-panel{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#262624;color:#f5f4ef;padding:16px 12px;border-radius:12px;width:240px}.ds-meter{margin-bottom:18px}.ds-meter:last-child{margin-bottom:0}.ds-meter-head{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;font-weight:600;margin-bottom:6px}.ds-meter-pct{font-variant-numeric:tabular-nums}.ds-track{height:14px;border-radius:7px;background:#4a382f;overflow:hidden}.ds-track-warn{background:#463b1a}.ds-track-crit{background:#4a2727}.ds-fill{height:14px;border-radius:7px;min-width:8px;background:#d97757}.ds-fill-warn{background:#fab219}.ds-fill-crit{background:#e05252}.ds-meter-foot{color:#94907e;font-size:13px;margin-top:5px}"
+    },
+    {
+      "name": "Sprocket Avatar",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "The 11x11 pixel-art mascot, rendered from the four-color sprite map shared byte-for-byte between the setup page SVG and the firmware sprite. On board-served pages it sits on a panel-ground chip that reproduces the device polarity in miniature.",
+      "html": "<div class=\"ds-ava\"><svg width=\"72\" height=\"72\" viewBox=\"0 0 88 88\" shape-rendering=\"crispEdges\" role=\"img\" aria-label=\"Sprocket, the Headroom Mini mascot\"><rect x=\"24\" y=\"0\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"56\" y=\"0\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"24\" y=\"8\" width=\"8\" height=\"8\" fill=\"#5F83A1\"/><rect x=\"56\" y=\"8\" width=\"8\" height=\"8\" fill=\"#5F83A1\"/><rect x=\"16\" y=\"16\" width=\"56\" height=\"8\" fill=\"#1A1816\"/><rect x=\"8\" y=\"24\" width=\"8\" height=\"56\" fill=\"#1A1816\"/><rect x=\"72\" y=\"24\" width=\"8\" height=\"56\" fill=\"#1A1816\"/><rect x=\"16\" y=\"24\" width=\"56\" height=\"8\" fill=\"#5F83A1\"/><rect x=\"16\" y=\"32\" width=\"56\" height=\"24\" fill=\"#FAF7EF\"/><rect x=\"24\" y=\"40\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"56\" y=\"40\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"32\" y=\"56\" width=\"24\" height=\"8\" fill=\"#1A1816\"/><rect x=\"16\" y=\"56\" width=\"16\" height=\"8\" fill=\"#FAF7EF\"/><rect x=\"56\" y=\"56\" width=\"16\" height=\"8\" fill=\"#FAF7EF\"/><rect x=\"16\" y=\"64\" width=\"56\" height=\"16\" fill=\"#5F83A1\"/><rect x=\"24\" y=\"64\" width=\"8\" height=\"8\" fill=\"#3F5F7A\"/><rect x=\"56\" y=\"64\" width=\"8\" height=\"8\" fill=\"#3F5F7A\"/><rect x=\"16\" y=\"80\" width=\"16\" height=\"8\" fill=\"#1A1816\"/><rect x=\"56\" y=\"80\" width=\"16\" height=\"8\" fill=\"#1A1816\"/></svg></div>",
+      "css": ".ds-ava{display:inline-block;background:#262624;border-radius:12px;padding:7px;line-height:0}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Paper and Panel",
+    "overview": "There is one palette here, and it lives in two polarities. Everything you meet in a browser — the setup page, the board's own /settings, /alerts, /update pages — is paper: warm cream (#f0eee6), dark ink (#3d3929), thin borders, almost no shadow. Everything on the 2\" LCD is panel: that same warmth inverted into a near-black ground (#262624) with cream ink (#f5f4ef), lit rather than printed. The terracotta accent (#d97757) is the one value that crosses the boundary unchanged, so the button you press in the browser and the meter that fills on your desk are recognizably the same object.\n\nThe register is plain and generous. Type is system-ui on every web surface and a bitmap face on the panel; there is no typeface to admire. Density is low on purpose — the setup page is three numbered cards and stops, and the panel is read in under a second from across a desk. What carries the design is discipline about where color goes and how much room things get.\n\nThe system is deliberately not a SaaS marketing page: no gradient meshes, no glassmorphism, no floating testimonial cards, no logo wall, no hero full of abstract 3D shapes. It is also not trying to extract money — this is free, MIT software whose only price is a third-party board. That rules out the whole monetization vocabulary: no urgency, no email capture, no upsell tiers, no pricing table, no \"Pro\" badge. The single affiliate link is disclosed in place and styled no louder than the sentence around it.",
+    "keyCharacteristics": [
+      "One palette, two polarities: cream paper in browsers, inverted lit panel on the device.",
+      "Terracotta is rationed to one primary action per card or screen.",
+      "Flat by default — 1px borders do the separating; one shadow in the system marks the one action that matters.",
+      "Generous and unfussy: 44px hit-target floor, soft 10–16px corners, no ornament.",
+      "A three-tier state ladder (terracotta → amber → crimson) that never rides on hue alone.",
+      "Sprocket, a 11×11 pixel-art mascot, is the only illustration the system owns."
+    ],
+    "rules": [
+      { "name": "The One Action Rule", "body": "Exactly one element per card or screen wears a terracotta fill. Every other control steps down to Stone, a bordered white tile, or plain ink. When a second thing looks equally urgent, one of them is wrong.", "section": "colors" },
+      { "name": "The Polarity Rule", "body": "Paper colors never appear on the panel and panel colors never appear on paper. #94907e is the panel's muted ink; on cream it measures 2.75:1 and fails. Use #6b6759 on paper.", "section": "colors" },
+      { "name": "The Three-Job Rule", "body": "No single terracotta can be a surface, carry white, and be readable on cream at once. That is why there are three. Pick by job — fill, action, or text — never by preference.", "section": "colors" },
+      { "name": "The Glance Rule", "body": "On the panel, anything a user needs at arm's length is bitmap ×2 or larger. Scale ×1 is for things you walk over and lean in to read; never put a live number there.", "section": "typography" },
+      { "name": "The Borrowed Type Rule", "body": "No web fonts, ever. system-ui is a security and speed position as much as an aesthetic one — the setup page collects Wi-Fi credentials and loads nothing from a third-party host.", "section": "typography" },
+      { "name": "The Three-Window Rule", "body": "The Meters screen draws at most three usage windows, then prints \"+N more\" in terracotta rather than shrinking to fit. Overflow is disclosed, never compressed.", "section": "layout" },
+      { "name": "The Earned Shadow Rule", "body": "Surfaces are flat. A shadow marks the one action that matters most on the surface; adding a second one means the first has stopped meaning anything.", "section": "elevation" },
+      { "name": "The Never-Empty Rule", "body": "A meter fill clamps to a minimum of 8px even at 0% left. A capsule with nothing in it reads as a broken widget, not as an empty tank.", "section": "shapes" },
+      { "name": "The Spent-State Rule", "body": "The three-tier ladder describes headroom, and it stops applying the moment there is none. On a screen about waiting rather than remaining, drop to neutral ink and let a single crimson label carry the state — otherwise a long wait wears terracotta, the colour of a full tank, and a wait about to end wears crimson exactly as the news turns good.", "section": "colors" }
+    ],
+    "dos": [
+      "Do pick the terracotta by job: #d97757 to fill a surface, #ba5532 to carry white, #a8442a to be read. The three exist because one value cannot do all three at AA on cream.",
+      "Do give exactly one control per card or screen a terracotta fill; step everything else down to Stone (#8a8577) or a bordered white tile.",
+      "Do separate surfaces with a 1px hairline and a tonal step, and reserve the one real shadow for the single most important action.",
+      "Do keep every interactive target at 44px or larger, including <summary> rows — which is why they carry 10px block padding rather than sitting at their natural 24px.",
+      "Do carry a state tier with fill length and a literal number alongside the hue, the way the meters already do.",
+      "Do hold the panel's glance floor at bitmap ×2 for anything a user reads from across the desk.",
+      "Do keep every asset first-party. esp-web-tools is vendored into docs/vendor/ on purpose: this page collects Wi-Fi credentials, and a hijacked CDN could exfiltrate them.",
+      "Do preserve the state change when prefers-reduced-motion is set, and drop only the movement. A blanket 0.01ms kill would strip feedback that is doing real work."
+    ],
+    "donts": [
+      "Don't put #94907e on cream. It is the panel's muted ink and measures 2.75:1 on paper — below AA. The board-served pages currently do this and it is a defect, not a precedent.",
+      "Don't set terracotta as text on cream. #d97757 is 2.75:1; that is what #a8442a is for.",
+      "Don't introduce a web font, a CDN asset, or any third-party host on any surface.",
+      "Don't reach for the SaaS marketing vocabulary — gradient meshes, glassmorphism, testimonial cards, logo walls, abstract 3D hero shapes. None of it belongs here.",
+      "Don't add monetization pressure of any kind: no urgency, no email capture, no pricing tiers, no \"Pro\" gating. The software is free and MIT; the one affiliate link stays disclosed in place and no louder than its surrounding sentence.",
+      "Don't let a meter render at zero width. Clamp the fill to 8px.",
+      "Don't compress overflow on the panel. Three windows, then \"+N more\".",
+      "Don't invent a second mascot or restyle Sprocket. Its four colors are shared byte-for-byte between the SVG and the firmware sprite.",
+      "Don't use terracotta for a focus ring on a terracotta fill — that ring stays ink."
+    ]
+  }
+}
