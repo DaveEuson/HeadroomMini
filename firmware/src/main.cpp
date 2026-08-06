@@ -208,6 +208,7 @@ static unsigned long actionQAt[ACTION_Q_MAX];
 static int actionQN = 0;
 static unsigned long lastActionPollMs = 0;   // last time a companion asked
 static time_t    timerResetAt = 0;    // reset time the Timer screen is counting to
+static bool      timerOut     = false; // that window is spent — we're counting a wait
 static int       mascotShownMood = -2; // mood the caption/screen is currently drawn for
 static int       mascotFrame  = 0;    // animation frame counter (Sprocket screen)
 static unsigned long lastActivityMs = 0;  // last time usage went UP (you're using Claude)
@@ -588,6 +589,13 @@ static int headlineUtil() {
   return f < 0 ? -1 : (int)(f + 0.5f);
 }
 
+// A window reads as "out" when its rounded percentage reaches 100% used — the
+// same rounding the meters print and Sprocket's "out of tokens" mood uses, so
+// the three can never disagree about whether you've run out.
+static bool windowOut(const Window &w) {
+  return (int)(w.utilization + 0.5f) >= 100;
+}
+
 static void sampleHistory() {
   int u = headlineUtil();
   if (u < 0) return;
@@ -819,7 +827,17 @@ static void drawTimerClock() {
   char b[16];
   fmtClock(timerResetAt, b, sizeof(b));
   long s = (timerResetAt && timeSynced) ? (long)(timerResetAt - time(nullptr)) : -1;
-  uint16_t c = s < 0 ? C_MUTED : s < 300 ? C_CRIT : s < 1800 ? C_WARN : C_ACC;
+  // The ladder below is about how soon the reset lands, which only reads right
+  // while you still have headroom. Once you're out it inverts: a two-day wait
+  // would wear terracotta, the same colour as a full tank, and the last five
+  // minutes of the wait would go crimson exactly as the news turns good. So the
+  // digits go neutral — the crimson label above has already said you're out,
+  // and all these have left to do is be readable.
+  uint16_t c = s < 0     ? C_MUTED
+             : timerOut  ? C_INK
+             : s < 300   ? C_CRIT
+             : s < 1800  ? C_WARN
+                         : C_ACC;
   gfx->fillRect(0, 150, 240, 52, C_BG);     // clear the digits band
   drawCentered(b, 156, 4, c);
 }
@@ -827,19 +845,30 @@ static void drawTimerClock() {
 static void drawTimer() {
   gfx->fillScreen(C_BG);
   drawUpdateBadge(222, 20);
-  int idx = -1;                             // soonest upcoming reset
-  for (int i = 0; i < nWindows; i++)
-    if (windows[i].resets_at &&
-        (idx < 0 || windows[i].resets_at < windows[idx].resets_at)) idx = i;
+  // Soonest upcoming reset — except that an exhausted window wins outright.
+  // When you're out of Weekly, an untouched session resetting in two hours is
+  // not the number you're waiting on; pass 0 looks only at windows you've run
+  // out of, and pass 1 runs at all only if none have.
+  int idx = -1;
+  for (int pass = 0; pass < 2 && idx < 0; pass++)
+    for (int i = 0; i < nWindows; i++) {
+      if (!windows[i].resets_at) continue;
+      if (pass == 0 && !windowOut(windows[i])) continue;
+      if (idx < 0 || windows[i].resets_at < windows[idx].resets_at) idx = i;
+    }
   if (idx < 0) {
     timerResetAt = 0;
+    timerOut = false;
     drawCentered("Countdown", 60, 3, C_INK);
     drawCentered("waiting for usage data", 156, 2, C_MUTED);
     return;
   }
   timerResetAt = windows[idx].resets_at;
-  drawCentered(windows[idx].label, 78, 2, C_MUTED);
-  drawCentered("resets in", 112, 3, C_INK);
+  // "back in" rather than "resets in" when you're out: the countdown has
+  // stopped being a fact about the window and started being your wait.
+  timerOut = windowOut(windows[idx]);
+  drawCentered(windows[idx].label, 78, 2, timerOut ? C_CRIT : C_MUTED);
+  drawCentered(timerOut ? "back in" : "resets in", 112, 3, C_INK);
   drawTimerClock();
   drawCentered("H : MM : SS", 214, 1, C_MUTED);
 }
@@ -915,6 +944,37 @@ static void drawScreen() {
   else if (uiScreen == 4) drawTimer();
   else if (uiScreen == 5) drawActions();
   else                    drawMeters();
+}
+
+// ---- running out puts the countdown up by itself --------------------------
+// The moment you run out is the one moment the only useful number on the desk
+// is how long until you can work again, and it's also the moment you're least
+// likely to go tapping through screens to find it. So the board switches to
+// the countdown on its own.
+//
+// It does this once per episode. Tap away and it stays away: `exhaustEpisode`
+// holds the reset time of the window that triggered the switch, so the board
+// won't force the screen again until that window resets and is spent afresh.
+// Being out of two windows at once is still one episode, not two.
+static time_t exhaustEpisode = 0;
+
+static void checkExhaustion() {
+  int idx = -1;
+  for (int i = 0; i < nWindows; i++)
+    if (windowOut(windows[i])) { idx = i; break; }
+
+  if (idx < 0) { exhaustEpisode = 0; return; }   // recovered -> re-arm
+
+  // Without a reset time there is nothing to count down to, so leave the
+  // screen alone rather than switching to a countdown that can't count.
+  time_t ep = windows[idx].resets_at;
+  if (!ep || ep == exhaustEpisode) return;
+  exhaustEpisode = ep;                           // claim it either way
+
+  if (uiScreen == 4) return;                     // already showing
+  if (!screenEnabled(4)) return;                 // Timer taken out of the rotation
+  if (pairingActive()) return;                   // the one-time code owns the screen
+  uiScreen = 4;
 }
 
 // ------------------------------------------------------------ phone alerts
@@ -1130,6 +1190,7 @@ static void handlePush() {
   sendJson(200, "{\"ok\":true}");
   noteUsageActivity();
   checkAlerts();
+  checkExhaustion();
   drawScreen();
 }
 
@@ -1635,6 +1696,7 @@ static bool fetchUsage(bool allowRefresh) {
   lastPushMs = millis();
   noteUsageActivity();
   checkAlerts();
+  checkExhaustion();
   drawScreen();
   return true;
 }

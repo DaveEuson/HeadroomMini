@@ -111,6 +111,16 @@ fuel-gauge style, with amber under 30% left and red under 10%. History persists
 across reboots in flash. Long-press flips "% left" / "% used"; swipe changes
 brightness; overnight dimming is on by default.
 
+**Running out:** when a window reaches 0% left, the board puts the Timer screen
+up by itself — a full-screen countdown to that window's reset. It is the one
+moment the only useful number is how long until you can work again, and the one
+moment the user is least likely to go tapping through screens to find it. The
+countdown prefers an exhausted window over the merely soonest one, so it always
+counts to the reset actually being waited on. This happens once per episode: a
+tap moves off it and it stays off until that window resets and is spent again.
+It never overrides a pairing code, and it respects the Timer screen being
+switched off in the screen mask.
+
 **Actions screen:** the board doubles as a shortcut pad. It queues one of three
 actions — Voice mode (Space), Mode toggle (Shift+Tab), Interrupt (Esc) — which
 the companion polls from `/api/actions` and synthesizes as a keystroke on the
