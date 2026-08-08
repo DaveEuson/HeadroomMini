@@ -990,8 +990,20 @@ static void drawProjects() {
   drawCentered(cap, 54, 1, C_MUTED);
 
   if (nProjects == 0) {
-    drawCentered("nothing logged yet", 150, 2, C_MUTED);
-    drawCentered("needs the companion running", 182, 1, C_MUTED);
+    // Empty means two different things and they need different advice. Once a
+    // push has landed (projAt set), the companion demonstrably *is* running and
+    // simply had a quiet window — telling the user to start it would contradict
+    // the caption directly above, which says it just reported.
+    if (projAt) {
+      char quiet[36];
+      if (projWindow[0]) snprintf(quiet, sizeof(quiet), "no activity in the last %s", projWindow);
+      else               strlcpy(quiet, "no activity yet", sizeof(quiet));
+      drawCentered("all quiet", 150, 2, C_MUTED);
+      drawCentered(quiet, 182, 1, C_MUTED);
+    } else {
+      drawCentered("nothing logged yet", 150, 2, C_MUTED);
+      drawCentered("needs the companion running", 182, 1, C_MUTED);
+    }
     return;
   }
 
@@ -1108,11 +1120,11 @@ static void drawScreen() {
   if (uiScreen == 1)      drawFocus();
   else if (uiScreen == 2) drawHistory();
   else if (uiScreen == 3) drawMascot();
-  else if (uiScreen == 4) drawTimer();
-  else if (uiScreen == 5) drawActions();
-  else if (uiScreen == 6) drawProjects();
-  else if (uiScreen == 7) drawSettings();
-  else                    drawMeters();
+  else if (uiScreen == SCREEN_TIMER)    drawTimer();
+  else if (uiScreen == SCREEN_ACTIONS)  drawActions();
+  else if (uiScreen == SCREEN_PROJECTS) drawProjects();
+  else if (uiScreen == SCREEN_SETTINGS) drawSettings();
+  else                                  drawMeters();
 }
 
 // ---- running out puts the countdown up by itself --------------------------
@@ -1691,39 +1703,32 @@ static void loadCreds() {
   if (defaultScreen < 0 || defaultScreen >= UI_SCREENS) defaultScreen = 0;
   screenMask &= (1 << UI_SCREENS) - 1;      // ignore stray high bits
   screenMask |= (1 << defaultScreen);       // the default is always in the rotation
-  // One-time: reveal the new Timer screen for installs that predate it, then
-  // never touch the mask again (so a later un-check sticks).
-  if (!timerMigrated) {
-    screenMask |= (1 << 4);
+  // One-time: reveal each screen added since the install was set up, then never
+  // touch the mask again (so a later un-check sticks). Settings especially — it
+  // is the only place the board prints its own address, so an upgrade that left
+  // it hidden would keep the problem it was added to fix. Actions and Projects
+  // are inert without a companion, so revealing them costs nothing.
+  //
+  // One transaction, not one per screen: each prefs.end() is a commit to
+  // wear-levelled flash, and doing them separately writes three superseded
+  // values of smask before the one that matters. The next new screen is one
+  // more line inside the block rather than a fifth copy of it.
+  if (!timerMigrated || !actionsMigrated || !projectsMigrated ||
+      !settingsMigrated) {
     prefs.begin("headroom", false);
+    if (!timerMigrated) {
+      screenMask |= (1 << SCREEN_TIMER);    prefs.putBool("tmrmig", true);
+    }
+    if (!actionsMigrated) {
+      screenMask |= (1 << SCREEN_ACTIONS);  prefs.putBool("actmig", true);
+    }
+    if (!projectsMigrated) {
+      screenMask |= (1 << SCREEN_PROJECTS); prefs.putBool("prjmig", true);
+    }
+    if (!settingsMigrated) {
+      screenMask |= (1 << SCREEN_SETTINGS); prefs.putBool("setmig", true);
+    }
     prefs.putUChar("smask", screenMask);
-    prefs.putBool("tmrmig", true);
-    prefs.end();
-  }
-  // Same one-time reveal for the Actions screen. The screen itself is inert
-  // until you run the companion with --actions, so showing it is harmless.
-  if (!actionsMigrated) {
-    screenMask |= (1 << 5);
-    prefs.begin("headroom", false);
-    prefs.putUChar("smask", screenMask);
-    prefs.putBool("actmig", true);
-    prefs.end();
-  }
-  // Same one-time reveal for Projects and Settings. Settings especially: it is
-  // the only place the board prints its own address, so an upgrade that left
-  // it hidden would keep the problem it was added to fix.
-  if (!projectsMigrated) {
-    screenMask |= (1 << SCREEN_PROJECTS);
-    prefs.begin("headroom", false);
-    prefs.putUChar("smask", screenMask);
-    prefs.putBool("prjmig", true);
-    prefs.end();
-  }
-  if (!settingsMigrated) {
-    screenMask |= (1 << SCREEN_SETTINGS);
-    prefs.begin("headroom", false);
-    prefs.putUChar("smask", screenMask);
-    prefs.putBool("setmig", true);
     prefs.end();
   }
   uiScreen = defaultScreen;                 // boot on the chosen screen
@@ -3001,7 +3006,7 @@ void loop() {
   }
   // Timer screen ticks its countdown every second (redraws only the digits).
   static unsigned long lastSec = 0;
-  if (uiScreen == 4 && !screenOff && !pairingActive() && timerResetAt &&
+  if (uiScreen == SCREEN_TIMER && !screenOff && !pairingActive() && timerResetAt &&
       millis() - lastSec >= 1000) {
     lastSec = millis();
     drawTimerClock();
