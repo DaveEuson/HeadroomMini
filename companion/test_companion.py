@@ -155,6 +155,44 @@ class ActionKeyTests(unittest.TestCase):
                          {"voice", "mode", "cancel"})
 
 
+class ProjectNameTests(unittest.TestCase):
+    """Naming the project a token belongs to.
+
+    The folder under ~/.claude/projects is path-mangled and genuinely
+    ambiguous: 'H--Projects-Kiosk-Grand' could be 'Kiosk-Grand' or
+    'Kiosk Grand' (it is the latter), and no amount of splitting on '-'
+    recovers that. These pin the rule that `cwd` wins, because getting it
+    wrong produces a plausible-looking board screen with the wrong labels.
+    """
+
+    ROOT = os.path.join("home", ".claude", "projects")
+
+    def _name(self, entry, slug):
+        return companion._project_name(
+            entry, os.path.join(self.ROOT, slug, "s.jsonl"), self.ROOT)
+
+    def test_cwd_wins_over_the_mangled_slug(self):
+        self.assertEqual(
+            self._name({"cwd": r"H:\Projects\Kiosk Grand"},
+                       "H--Projects-Kiosk-Grand"),
+            "Kiosk Grand")
+
+    def test_names_containing_separators_survive(self):
+        for cwd, want in ((r"H:\Projects\RigMatch.AI-main", "RigMatch.AI-main"),
+                          ("/home/dave/my-app", "my-app"),
+                          ("/srv/Website 2", "Website 2")):
+            self.assertEqual(self._name({"cwd": cwd}, "ignored"), want, cwd)
+
+    def test_trailing_separators_dont_yield_an_empty_name(self):
+        for cwd, want in ((r"H:\Projects\Thing" + "\\", "Thing"),
+                          ("/home/dave/thing/", "thing")):
+            self.assertEqual(self._name({"cwd": cwd}, "x--y-thing"), want, cwd)
+
+    def test_falls_back_to_the_slug_when_cwd_is_missing_or_junk(self):
+        for entry in ({}, {"cwd": ""}, {"cwd": "   "}, {"cwd": None}):
+            self.assertEqual(self._name(entry, "H--Projects-Sparko"), "Sparko")
+
+
 class _FakeProc:
     returncode = 0
 

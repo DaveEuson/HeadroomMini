@@ -303,6 +303,24 @@ def _parse_ts(value):
         return None
 
 
+def _project_name(entry, path, root):
+    """Which project an event belongs to.
+
+    Prefer the event's own `cwd` — the directory name under ~/.claude/projects
+    is path-mangled (H:\\Projects\\Kiosk-Grand becomes H--Projects-Kiosk-Grand)
+    and can't be reversed: there is no telling a '-' that was a separator from
+    one that was in the folder name. `cwd` is on every event and is exact, so
+    the mangled slug is only a fallback for entries that somehow lack it."""
+    cwd = entry.get("cwd")
+    if isinstance(cwd, str) and cwd.strip():
+        base = os.path.basename(cwd.rstrip("/\\").replace("\\", "/"))
+        if base:
+            return base
+    rel = os.path.relpath(path, root)
+    slug = rel.replace("\\", "/").split("/")[0]
+    return slug.strip("-").split("-")[-1] or slug
+
+
 def read_events(root):
     for path in glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True):
         try:
@@ -323,7 +341,7 @@ def read_events(root):
                         "input_tokens", "output_tokens",
                         "cache_creation_input_tokens", "cache_read_input_tokens"))
                     model = (msg.get("model") or "").lower()
-                    yield ts, model, tokens
+                    yield ts, model, tokens, _project_name(entry, path, root)
         except OSError:
             continue
 
@@ -337,7 +355,7 @@ def get_log_windows(limits):
 
     def win(seconds, key, label, subset=None):
         cutoff, total, oldest = now - seconds, 0, None
-        for ts, model, tok in events:
+        for ts, model, tok, _proj in events:
             if ts >= cutoff and (subset is None or subset in model):
                 total += tok
                 oldest = ts if oldest is None else min(oldest, ts)
@@ -353,6 +371,48 @@ def get_log_windows(limits):
     if opus["utilization"] > 0:
         windows.append(opus)
     return windows
+
+
+# ------------------------------------------------ where the tokens actually go
+#
+# Anthropic's usage endpoint reports account-wide windows with no per-project
+# breakdown, so "which project ate my week" can only be answered from Claude
+# Code's own session logs — which exist on *this* computer only. The board
+# labels the screen accordingly; work done from another machine is invisible
+# here, and quietly under-reporting would be worse than saying so.
+#
+# Shares are percentages of the window's measured tokens, not of a plan limit.
+# That sidesteps the estimated-budget problem entirely: the same measured
+# counts go into every project, so the ranking holds even where an absolute
+# percent-of-limit would be a guess.
+
+PROJECT_WINDOW_SECS = FIVE_HOURS
+PROJECT_WINDOW_LABEL = "5h"
+MAX_PROJECTS = 5
+
+
+def get_project_shares(seconds=PROJECT_WINDOW_SECS, top=MAX_PROJECTS):
+    """Rank this computer's projects by tokens spent in the trailing window.
+
+    Returns (ranked, hidden) where `hidden` is how many projects fell outside
+    the top N. Shares are of the whole window, so the visible ones won't add
+    up to 100% when anything is hidden — the board says "+N more" rather than
+    letting the missing percentage read as a rounding error."""
+    root = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+    if not os.path.isdir(root):
+        return [], 0
+    cutoff = time.time() - seconds
+    totals = {}
+    for ts, _model, tok, proj in read_events(root):
+        if ts >= cutoff and tok:
+            totals[proj] = totals.get(proj, 0) + tok
+    grand = sum(totals.values())
+    if not grand:
+        return [], 0
+    ranked = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
+    shown = [{"name": name[:21], "share": round(100.0 * tok / grand, 1)}
+             for name, tok in ranked[:top]]
+    return shown, max(0, len(ranked) - len(shown))
 
 
 # ------------------------------------------------------------------- push loop
@@ -709,6 +769,19 @@ def run_once(cfg):
             _print_no_claude()
             return False, 0, False
     payload = {"windows": windows, "plan": plan, "source": source}
+    # Project shares ride along on both paths. They come from the local logs
+    # even when the windows above are live, because the live endpoint has no
+    # per-project breakdown to offer — the two answer different questions and
+    # are not expected to agree.
+    try:
+        projects, hidden = get_project_shares()
+    except OSError as exc:                       # unreadable logs shouldn't
+        projects, hidden = [], 0                 # cost you the usage push
+        print(f"(couldn't read project usage: {exc})", file=sys.stderr)
+    if projects:
+        payload["projects"] = projects
+        payload["projects_window"] = PROJECT_WINDOW_LABEL
+        payload["projects_more"] = hidden
     # cfg["pi"] may be a comma-separated list — one companion can feed
     # several trackers (e.g. a Pi on the desk and a Mini on the shelf).
     targets = [t.strip() for t in str(cfg["pi"]).split(",") if t.strip()]
