@@ -85,7 +85,9 @@ https://www.printables.com/model/1188149-enclosure-for-esp32-s3-touch-lcd-2
 - **v0 (this)** — screen + Wi-Fi + companion-fed meters. Bring-up day.
 - **Phase 1.5 — touch & motion (done).** CST816D capacitive touch + QMI8658
   IMU on the shared I2C bus (SDA 48 / SCL 47):
-  - **Tap / swipe L-R** → cycle screens (meters → focus → history → Sprocket)
+  - **Tap / swipe L-R** → cycle screens (meters → focus → history → Sprocket
+    → Timer → Actions → Projects → Settings)
+  - **Double-tap** → jump to the Settings screen (the board's own address)
   - **Long-press** → toggle % left / % used (saved)
   - **Swipe up / down** → brightness
   - **Face-down** → screen off; **face-up / shake** → wake
@@ -117,8 +119,14 @@ https://www.printables.com/model/1188149-enclosure-for-esp32-s3-touch-lcd-2
 - `http://<board-ip>:8080/settings` configures the clock timezone (defaults to
   US Eastern; countdowns are timezone-independent), 12/24-hour format, overnight
   dimming, **which screens are in the tap rotation** (meters / focus / history /
-  Sprocket / Timer), the **default screen** shown at power-on, and optional
-  **auto-rotate** (cycle the enabled screens every 10-60 s; tapping pauses it).
+  Sprocket / Timer / Actions / Projects / Settings), the **default screen** shown
+  at power-on, and optional **auto-rotate** (cycle the enabled screens every
+  10-60 s; tapping pauses it).
+- Don't know the address? **Double-tap the display.** The Settings screen prints
+  `ip:port` and the firmware version, and lets you toggle the screen rotation
+  without a browser. It refuses to switch itself off, to switch off the
+  power-on default, or to leave fewer than two screens — the web form above can
+  still do all three.
 - Update over Wi-Fi at `http://<board-ip>:8080/update` — it downloads the app
   image from the latest GitHub release into the inactive OTA slot and reboots,
   keeping your Wi-Fi/login/settings. A failed download leaves the running
