@@ -149,10 +149,17 @@ a working board previously showed its address nowhere — it appeared only on th
 not-yet-set-up and error screens — so there was no route from the device to its
 own configuration pages. Swipes move the cursor, a tap toggles a row. Three
 toggles are refused with a reason: the Settings screen itself, the power-on
-default, and anything that would leave fewer than two screens. The web form at
-`/settings` can still do all three. A **double-tap anywhere** jumps here, which
-also means taking Settings out of the rotation from the web form can't lock you
-out of finding the address again.
+default, and anything that would leave fewer than two screens. Those guards run
+in the disable direction only — a Settings row the web form has switched off can
+still be switched back on from the device. The web form at `/settings` can do
+all three.
+
+There is deliberately **no double-tap shortcut**. Touch dispatches on finger
+release, so the first tap of a double-tap is already delivered as a plain tap
+before the double-tap code arrives — on the Actions screen that would queue a
+real keystroke to the computer and *then* jump. Correcting it would mean
+holding every tap ~250 ms to see whether a second follows, which is visible lag
+on "next screen" for a shortcut that only duplicates paging.
 
 **Security constraints that design must not undercut:** verified TLS against a
 pinned root CA set on every outbound connection (no `setInsecure()`); OTA

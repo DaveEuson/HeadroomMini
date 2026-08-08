@@ -168,8 +168,9 @@ class ProjectNameTests(unittest.TestCase):
     ROOT = os.path.join("home", ".claude", "projects")
 
     def _name(self, entry, slug):
-        return companion._project_name(
+        key = companion._project_key(
             entry, os.path.join(self.ROOT, slug, "s.jsonl"), self.ROOT)
+        return companion._project_name(key)
 
     def test_cwd_wins_over_the_mangled_slug(self):
         self.assertEqual(
@@ -191,6 +192,37 @@ class ProjectNameTests(unittest.TestCase):
     def test_falls_back_to_the_slug_when_cwd_is_missing_or_junk(self):
         for entry in ({}, {"cwd": ""}, {"cwd": "   "}, {"cwd": None}):
             self.assertEqual(self._name(entry, "H--Projects-Sparko"), "Sparko")
+
+
+class ProjectLabelTests(unittest.TestCase):
+    """Turning project paths into board rows.
+
+    Two different projects must never render as the same row — a merged or
+    duplicated label is a wrong number presented confidently, which is the one
+    failure mode a usage display can't afford.
+    """
+
+    def test_same_basename_is_qualified_by_its_parent(self):
+        got = companion._label_projects(
+            ["/home/d/work/client-a/web", "/home/d/work/client-b/web"])
+        self.assertEqual(set(got.values()), {"client-a/web", "client-b/web"})
+
+    def test_unique_basenames_are_left_alone(self):
+        got = companion._label_projects(["/a/sparko", "/b/ClaudeTrackerPi"])
+        self.assertEqual(set(got.values()), {"sparko", "ClaudeTrackerPi"})
+
+    def test_labels_fit_the_board_and_stay_distinct(self):
+        keys = ["/x/" + "averylongprojectname%d" % i for i in range(3)]
+        got = companion._label_projects(keys, width=21)
+        self.assertEqual(len(set(got.values())), 3, got)
+        for label in got.values():
+            self.assertLessEqual(len(label), 21, label)
+
+    def test_every_key_gets_exactly_one_label(self):
+        keys = ["/a/web", "/b/web", "/c/api"]
+        got = companion._label_projects(keys)
+        self.assertEqual(sorted(got), sorted(keys))
+        self.assertEqual(len(set(got.values())), 3)
 
 
 class _FakeProc:

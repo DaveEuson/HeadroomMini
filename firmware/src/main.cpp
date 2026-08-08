@@ -1036,7 +1036,10 @@ static int enabledScreenCount() {
 // display hide the only thing that tells you where that form lives.
 static bool toggleScreenAt(int i) {
   const char *why = nullptr;
-  if (i == SCREEN_SETTINGS)              why = "Settings stays on";
+  // Guard the *disable* direction only. Blocking both ways made a Settings row
+  // that the web form had switched off impossible to switch back on: you would
+  // tap the unchecked box and be told it stays on, while it stayed off.
+  if (i == SCREEN_SETTINGS && screenEnabled(i)) why = "Settings stays on";
   else if (i == defaultScreen)           why = "that's the default";
   else if (screenEnabled(i) && enabledScreenCount() <= 2)
                                          why = "keep at least two";
@@ -2765,16 +2768,13 @@ static void dispatchGesture(uint8_t g) {
   lastUserTouch = millis();                 // pause auto-rotate while you interact
   if (screenOff) { wake(); return; }        // a dimmed screen wakes on any touch
 
-  // Double-tap means the same thing everywhere: show me where to configure
-  // this. It also reaches Settings when Settings has been taken out of the
-  // rotation from the web form, so that choice can't lock you out.
-  if (g == 0x0B && !pairingActive()) {
-    uiScreen = SCREEN_SETTINGS;
-    settingSel = 0;
-    settingMsg[0] = 0;
-    drawScreen();
-    return;
-  }
+  // No double-tap shortcut to Settings, deliberately. pollTouch dispatches on
+  // every finger release, so the first tap of a double-tap has already been
+  // delivered as a plain tap before 0x0B ever arrives — on the Actions screen
+  // that meant queueing a real keystroke to the user's computer and *then*
+  // jumping. Making it correct would mean holding every tap ~250ms to see
+  // whether a second one follows, which is visible lag on "next screen" for a
+  // shortcut that only duplicates paging. Settings is in the rotation instead.
 
   // Settings rebinds up/down to move the cursor and tap to toggle the row.
   // Left/right still page away, so there is always a way out.

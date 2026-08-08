@@ -87,7 +87,6 @@ https://www.printables.com/model/1188149-enclosure-for-esp32-s3-touch-lcd-2
   IMU on the shared I2C bus (SDA 48 / SCL 47):
   - **Tap / swipe L-R** → cycle screens (meters → focus → history → Sprocket
     → Timer → Actions → Projects → Settings)
-  - **Double-tap** → jump to the Settings screen (the board's own address)
   - **Long-press** → toggle % left / % used (saved)
   - **Swipe up / down** → brightness
   - **Face-down** → screen off; **face-up / shake** → wake
@@ -122,11 +121,12 @@ https://www.printables.com/model/1188149-enclosure-for-esp32-s3-touch-lcd-2
   Sprocket / Timer / Actions / Projects / Settings), the **default screen** shown
   at power-on, and optional **auto-rotate** (cycle the enabled screens every
   10-60 s; tapping pauses it).
-- Don't know the address? **Double-tap the display.** The Settings screen prints
-  `ip:port` and the firmware version, and lets you toggle the screen rotation
-  without a browser. It refuses to switch itself off, to switch off the
-  power-on default, or to leave fewer than two screens — the web form above can
-  still do all three.
+- Don't know the address? **Tap through to the Settings screen** — it's last in
+  the rotation. It prints `ip:port` and the firmware version, and lets you
+  toggle the screen rotation without a browser. It refuses to switch *itself*
+  off, to switch off the power-on default, or to leave fewer than two screens,
+  so the address can't be tapped out of existence; the web form above can still
+  do all three.
 - Update over Wi-Fi at `http://<board-ip>:8080/update` — it downloads the app
   image from the latest GitHub release into the inactive OTA slot and reboots,
   keeping your Wi-Fi/login/settings. A failed download leaves the running

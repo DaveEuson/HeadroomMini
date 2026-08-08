@@ -303,26 +303,78 @@ def _parse_ts(value):
         return None
 
 
-def _project_name(entry, path, root):
-    """Which project an event belongs to.
+def _project_key(entry, path, root):
+    """The full directory identifying the project an event belongs to.
 
-    Prefer the event's own `cwd` — the directory name under ~/.claude/projects
-    is path-mangled (H:\\Projects\\Kiosk-Grand becomes H--Projects-Kiosk-Grand)
+    Prefer the event's own `cwd` — the folder under ~/.claude/projects is
+    path-mangled (H:\\Projects\\Kiosk Grand becomes H--Projects-Kiosk-Grand)
     and can't be reversed: there is no telling a '-' that was a separator from
     one that was in the folder name. `cwd` is on every event and is exact, so
-    the mangled slug is only a fallback for entries that somehow lack it."""
+    the mangled slug is only a fallback for entries that somehow lack it.
+
+    This returns the whole path, not the basename: ~/work/client-a/web and
+    ~/work/client-b/web are different projects that a basename would merge."""
     cwd = entry.get("cwd")
     if isinstance(cwd, str) and cwd.strip():
-        base = os.path.basename(cwd.rstrip("/\\").replace("\\", "/"))
-        if base:
-            return base
+        return cwd.strip().rstrip("/\\").replace("\\", "/")
     rel = os.path.relpath(path, root)
-    slug = rel.replace("\\", "/").split("/")[0]
-    return slug.strip("-").split("-")[-1] or slug
+    return rel.replace("\\", "/").split("/")[0]
 
 
-def read_events(root):
+def _project_name(key):
+    """The last path segment — what a project is called when nothing collides."""
+    base = key.rstrip("/").split("/")[-1]
+    if not base:
+        return key
+    # A bare slug fallback ('H--Projects-Sparko') has no separators to split on;
+    # take the tail and accept that it may be approximate.
+    return base.strip("-").split("-")[-1] if "/" not in key and "-" in base else base
+
+
+def _label_projects(keys, width=21):
+    """Board labels for a set of project paths: short, and never ambiguous.
+
+    Two projects that share a basename get qualified by their parent, and
+    anything still colliding after the board's width limit gets a numeric
+    suffix — two identical rows meaning different things is worse than an
+    ugly one."""
+    names = {k: _project_name(k) for k in keys}
+    seen = {}
+    for k, n in names.items():
+        seen.setdefault(n, []).append(k)
+    for n, owners in seen.items():
+        if len(owners) < 2:
+            continue
+        for k in owners:                       # qualify with the parent dir
+            parts = k.rstrip("/").split("/")
+            if len(parts) >= 2:
+                names[k] = parts[-2] + "/" + n
+
+    out, used = {}, {}
+    for k, n in names.items():
+        if len(n) > width:                     # keep the tail: it distinguishes
+            n = n[-width:]
+        if n in used:                          # still colliding after trimming
+            used[n] += 1
+            suffix = "~%d" % used[n]
+            n = n[:width - len(suffix)] + suffix
+        else:
+            used[n] = 1
+        out[k] = n
+    return out
+
+
+def read_events(root, since=None):
     for path in glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True):
+        # Events are appended in time order, so a file whose last write predates
+        # the window can't hold one inside it. Skipping those keeps this from
+        # being a full-disk read of every project you have ever opened.
+        if since is not None:
+            try:
+                if os.path.getmtime(path) < since:
+                    continue
+            except OSError:
+                pass
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as fh:
                 for line in fh:
@@ -341,7 +393,7 @@ def read_events(root):
                         "input_tokens", "output_tokens",
                         "cache_creation_input_tokens", "cache_read_input_tokens"))
                     model = (msg.get("model") or "").lower()
-                    yield ts, model, tokens, _project_name(entry, path, root)
+                    yield ts, model, tokens, _project_key(entry, path, root)
         except OSError:
             continue
 
@@ -350,8 +402,8 @@ def get_log_windows(limits):
     root = os.path.join(os.path.expanduser("~"), ".claude", "projects")
     if not os.path.isdir(root):
         return None
-    events = list(read_events(root))
     now = time.time()
+    events = list(read_events(root, since=now - SEVEN_DAYS))
 
     def win(seconds, key, label, subset=None):
         cutoff, total, oldest = now - seconds, 0, None
@@ -403,15 +455,16 @@ def get_project_shares(seconds=PROJECT_WINDOW_SECS, top=MAX_PROJECTS):
         return [], 0
     cutoff = time.time() - seconds
     totals = {}
-    for ts, _model, tok, proj in read_events(root):
+    for ts, _model, tok, key in read_events(root, since=cutoff):
         if ts >= cutoff and tok:
-            totals[proj] = totals.get(proj, 0) + tok
+            totals[key] = totals.get(key, 0) + tok
     grand = sum(totals.values())
     if not grand:
         return [], 0
     ranked = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
-    shown = [{"name": name[:21], "share": round(100.0 * tok / grand, 1)}
-             for name, tok in ranked[:top]]
+    labels = _label_projects([k for k, _ in ranked[:top]])
+    shown = [{"name": labels[k], "share": round(100.0 * tok / grand, 1)}
+             for k, tok in ranked[:top]]
     return shown, max(0, len(ranked) - len(shown))
 
 
@@ -778,10 +831,13 @@ def run_once(cfg):
     except OSError as exc:                       # unreadable logs shouldn't
         projects, hidden = [], 0                 # cost you the usage push
         print(f"(couldn't read project usage: {exc})", file=sys.stderr)
-    if projects:
-        payload["projects"] = projects
-        payload["projects_window"] = PROJECT_WINDOW_LABEL
-        payload["projects_more"] = hidden
+    # Sent unconditionally, empty included. The firmware reads an absent key as
+    # "keep what you have" (so an older companion doesn't blank the screen), so
+    # omitting it on a quiet window would leave this morning's ranking on
+    # display under a caption claiming it covers the last 5 hours.
+    payload["projects"] = projects
+    payload["projects_window"] = PROJECT_WINDOW_LABEL
+    payload["projects_more"] = hidden
     # cfg["pi"] may be a comma-separated list — one companion can feed
     # several trackers (e.g. a Pi on the desk and a Mini on the shelf).
     targets = [t.strip() for t in str(cfg["pi"]).split(",") if t.strip()]
