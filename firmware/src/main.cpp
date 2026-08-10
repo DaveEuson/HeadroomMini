@@ -1075,14 +1075,22 @@ static void drawSettings() {
   // The whole reason this screen exists: a working board used to show its
   // address nowhere, so there was no route from the device to its own config.
   if (WiFi.status() == WL_CONNECTED) {
-    char addr[32];
-    snprintf(addr, sizeof(addr), "%s:%d",
-             WiFi.localIP().toString().c_str(), API_PORT);
-    drawCentered(addr, 50, 2, C_ACC);
-    drawCentered("open in a browser to set up", 74, 1, C_MUTED);
+    // The address is the whole point of this screen, so it gets the largest
+    // type on it — it was previously the same size as the title above it,
+    // which read as small on the bench. Splitting the port off is what buys
+    // the room: "ip:8080" at size 3 is past drawCentered's 236px ceiling for
+    // any real address, and on a longer LAN prefix it exceeded it even at
+    // size 2, which silently stepped the font down to caption size. The port
+    // never changes, so it loses nothing by moving to the line below.
+    char ip[24];
+    strlcpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip));
+    drawCentered(ip, 46, 3, C_ACC);
+    char hint[40];
+    snprintf(hint, sizeof(hint), "port %d - open in a browser", API_PORT);
+    drawCentered(hint, 76, 1, C_MUTED);
   } else {
     drawCentered("offline", 50, 2, C_MUTED);
-    drawCentered("no address until Wi-Fi joins", 74, 1, C_MUTED);
+    drawCentered("no address until Wi-Fi joins", 76, 1, C_MUTED);
   }
   char ver[16];
   snprintf(ver, sizeof(ver), "v%s", FW_VERSION);

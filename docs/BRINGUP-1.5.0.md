@@ -24,12 +24,15 @@ meaningful.
 
 ## 1. Settings layout — most likely to be wrong
 
-- [ ] **Address renders at size 2**, not silently shrunk. Drawn at y=50;
-      `drawCentered` steps the font down past 236px, so a long address drops to
-      size 1 and reads noticeably smaller than the title above it.
-      `192.168.1.42:8080` is comfortable; `192.168.100.100:8080` is at the edge.
-- [ ] **Bottom row (Settings) is not clipped.** Eight rows at 21px pitch from
-      y=132; the last ends near 287 with the footer at 304.
+- [x] **Address is the largest type on the screen**, clearly bigger than the
+      "Settings" title above it. The IP sits alone at size 3 with the port on
+      the line below — carrying `ip:8080` on one line put it past
+      `drawCentered`'s 236px ceiling, which silently stepped the font down to
+      caption size. A long prefix like `192.168.100.100` still steps to size 2,
+      which matches the old best case. *Verified on hardware.*
+- [x] **Bottom row (Settings) is not clipped.** Eight rows at 21px pitch from
+      y=132; the last ends near 287 with the footer at 304. *Verified on
+      hardware, before and after the header change.*
 - [ ] **Selection highlight doesn't collide with neighbours.** The highlight is
       a 20px `fillRoundRect` on a 21px pitch — 1px of breathing room, chosen
       arithmetically and never seen.
