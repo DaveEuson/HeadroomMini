@@ -104,8 +104,9 @@ The environment is assumed to be a trusted home or office network.
 - `README.md`, `docs/TROUBLESHOOTING.md`, `docs/HARDENING.md` — the reading
   experience for evaluation and debugging.
 
-**Device UI:** six screens — Meters, Focus, History, Sprocket, Timer, Actions —
-cycled by tap, each individually enable-able via a screen mask. Meters cover
+**Device UI:** eight screens — Meters, Focus, History, Sprocket, Timer, Actions,
+Projects, Settings — cycled by tap, each individually enable-able via a screen
+mask. Meters cover
 every usage window Claude reports (5-hour session, weekly, weekly Opus…) in
 fuel-gauge style, with amber under 30% left and red under 10%. History persists
 across reboots in flash. Long-press flips "% left" / "% used"; swipe changes
@@ -128,6 +129,37 @@ computer. Queue depth 4, entries expire after 15s. The board only ever queues
 on a physical touch, and the companion must be started with `--actions` to act
 at all; nothing on the network can inject a keypress. On this screen tap and
 swipe are rebound — swipes move the selection, a tap fires.
+
+**Projects screen:** ranks where the tokens actually went — the top 5 projects
+by share of the trailing 5 hours, with a "+N more" when others are below the
+cut. Anthropic's usage endpoint reports account-wide windows with no
+per-project breakdown, so this can only come from Claude Code's own session
+logs on the computer running the companion. The screen therefore says "this
+computer" out loud: work done from another machine is invisible to it, and
+under-reporting silently would be worse than naming the limit. Shares are
+percentages of measured tokens in the window rather than of a plan limit, which
+keeps the ranking honest even where an absolute percent-of-limit would be an
+estimate. Project identity comes from each event's `cwd`, not the mangled
+folder name under `~/.claude/projects` — that slug can't be reversed
+(`H--Projects-Kiosk-Grand` is "Kiosk Grand", not "Kiosk-Grand").
+
+**Settings screen:** the board's own address (`ip:port`) and firmware version,
+plus on-device toggles for which screens are in the rotation. It exists because
+a working board previously showed its address nowhere — it appeared only on the
+not-yet-set-up and error screens — so there was no route from the device to its
+own configuration pages. Swipes move the cursor, a tap toggles a row. Three
+toggles are refused with a reason: the Settings screen itself, the power-on
+default, and anything that would leave fewer than two screens. Those guards run
+in the disable direction only — a Settings row the web form has switched off can
+still be switched back on from the device. The web form at `/settings` can do
+all three.
+
+There is deliberately **no double-tap shortcut**. Touch dispatches on finger
+release, so the first tap of a double-tap is already delivered as a plain tap
+before the double-tap code arrives — on the Actions screen that would queue a
+real keystroke to the computer and *then* jump. Correcting it would mean
+holding every tap ~250 ms to see whether a second follows, which is visible lag
+on "next screen" for a shortcut that only duplicates paging.
 
 **Security constraints that design must not undercut:** verified TLS against a
 pinned root CA set on every outbound connection (no `setInsecure()`); OTA

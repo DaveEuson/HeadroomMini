@@ -154,6 +154,42 @@ permission for whatever runs the companion (System Settings → Privacy &
 Security → Accessibility); **Linux** needs `xdotool` (`sudo apt install
 xdotool`).
 
+## Projects: where the tokens actually went
+
+The board's **Projects** screen ranks your projects by share of the last 5
+hours' tokens — top 5, with "+N more" when others fall below the cut. Nothing
+to enable; the companion sends it with every push.
+
+**It only ever describes this computer.** Anthropic's usage endpoint reports
+account-wide windows with no per-project breakdown, so the ranking is built
+from Claude Code's own session logs under `~/.claude/projects` — which exist
+locally. Work you did from another machine, or on the web, won't appear. The
+screen labels itself "this computer" for that reason.
+
+It also answers a different question from the meters, and the two aren't
+expected to agree:
+
+| | Meters / Timer | Projects |
+|---|---|---|
+| Source | Anthropic usage API (live) | local session logs |
+| Scope | your whole account | this computer |
+| Units | % of your plan's window | % of tokens measured in the window |
+
+Shares are percentages of the tokens actually measured, not of a plan limit.
+That keeps the ranking trustworthy even when an absolute percent-of-limit would
+be an estimate — every project is counted the same way.
+
+**Nested directories roll up.** Claude Code keys a project off the working
+directory, so opening a repo, a subdirectory of it, and a package inside that
+would otherwise be three rows that each understate the work. Each one folds
+into the nearest ancestor that is *also* a project you've worked in — an
+ancestor you never opened is never invented as a grouping.
+
+Project names come from each event's own `cwd`, not the folder name under
+`~/.claude/projects`. Those folder names are path-mangled and can't be reversed:
+`H--Projects-Kiosk-Grand` is the project "Kiosk Grand", but nothing in the slug
+distinguishes a `-` that was a path separator from one that was in the name.
+
 ## Troubleshooting
 
 Hitting "login expired", a 404 / "couldn't reach the board", "rate limited", or

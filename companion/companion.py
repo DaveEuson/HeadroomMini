@@ -303,8 +303,124 @@ def _parse_ts(value):
         return None
 
 
-def read_events(root):
+def _project_key(entry, path, root):
+    """The full directory identifying the project an event belongs to.
+
+    Prefer the event's own `cwd` — the folder under ~/.claude/projects is
+    path-mangled (H:\\Projects\\Kiosk Grand becomes H--Projects-Kiosk-Grand)
+    and can't be reversed: there is no telling a '-' that was a separator from
+    one that was in the folder name. `cwd` is on every event and is exact, so
+    the mangled slug is only a fallback for entries that somehow lack it.
+
+    This returns the whole path, not the basename: ~/work/client-a/web and
+    ~/work/client-b/web are different projects that a basename would merge."""
+    cwd = entry.get("cwd")
+    if isinstance(cwd, str) and cwd.strip():
+        return cwd.strip().rstrip("/\\").replace("\\", "/")
+    rel = os.path.relpath(path, root)
+    return rel.replace("\\", "/").split("/")[0]
+
+
+def _project_name(key):
+    """The last path segment — what a project is called when nothing collides."""
+    base = key.rstrip("/").split("/")[-1]
+    if not base:
+        return key
+    # A bare slug fallback ('H--Projects-Sparko') has no separators to split on;
+    # take the tail and accept that it may be approximate.
+    return base.strip("-").split("-")[-1] if "/" not in key and "-" in base else base
+
+
+def _roll_up_nested(totals):
+    """Fold each project into the nearest ancestor that is also a project.
+
+    Claude Code keys a project directory off the cwd, so opening a repo, a
+    subdirectory of it, and a package inside that yields three "projects" that
+    are one thing to the person who owns them — split across three rows and
+    understated in each.
+
+    Only folds into an ancestor that is *itself* tracked. H:/Projects/Qibb/Audio
+    to Video stays put when there is no H:/Projects/Qibb project, because
+    inventing a grouping the user never worked in would be a different kind of
+    wrong. Matching is case-insensitive: Windows hands back whatever casing the
+    shell used, and H:/Projects and h:/projects are the same directory."""
+    canon = {}                                  # lowercased path -> real key
+    for k in totals:
+        canon.setdefault(k.lower(), k)
+    root_of = {}
+    for k in sorted(totals, key=len):           # ancestors are shorter, so
+        cur, found = k, None                    # they resolve first
+        while "/" in cur:
+            cur = cur.rsplit("/", 1)[0]
+            owner = canon.get(cur.lower())
+            if owner is not None and owner != k:
+                found = root_of.get(owner, owner)
+                break
+        root_of[k] = found or k
+    merged = {}
+    for k, tok in totals.items():
+        r = root_of[k]
+        merged[r] = merged.get(r, 0) + tok
+    return merged
+
+
+def _label_projects(keys, width=21):
+    """Board labels for a set of project paths: short, and never ambiguous.
+
+    Two projects that share a basename get qualified by their parent, and
+    anything still colliding after the board's width limit gets a numeric
+    suffix — two identical rows meaning different things is worse than an
+    ugly one."""
+    names = {k: _project_name(k) for k in keys}
+    seen = {}
+    for k, n in names.items():
+        seen.setdefault(n, []).append(k)
+    for n, owners in seen.items():
+        if len(owners) < 2:
+            continue
+        for k in owners:                       # qualify with the parent dir
+            parts = k.rstrip("/").split("/")
+            if len(parts) >= 2:
+                names[k] = parts[-2] + "/" + n
+
+    out, used = {}, {}
+    for k, n in names.items():
+        if len(n) > width:
+            # Trim from the *end* of each part, never the front. A qualified
+            # label is "parent/base" where the parent is what distinguishes it
+            # and the base is what they share, so taking the last `width` chars
+            # would eat the parent and leave two rows differing only in their
+            # ruined prefix ("main/foo" vs "ects/foo"). Give the parent a fixed
+            # slice and the base the rest.
+            if "/" in n:
+                parent, base = n.split("/", 1)
+                pw = max(4, width // 3)
+                parent = parent[:pw]
+                base = base[:max(1, width - len(parent) - 1)]
+                n = parent + "/" + base
+            else:
+                n = n[:width]
+        if n in used:                          # still colliding after trimming
+            used[n] += 1
+            suffix = "~%d" % used[n]
+            n = n[:width - len(suffix)] + suffix
+        else:
+            used[n] = 1
+        out[k] = n
+    return out
+
+
+def read_events(root, since=None):
     for path in glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True):
+        # Events are appended in time order, so a file whose last write predates
+        # the window can't hold one inside it. Skipping those keeps this from
+        # being a full-disk read of every project you have ever opened.
+        if since is not None:
+            try:
+                if os.path.getmtime(path) < since:
+                    continue
+            except OSError:
+                pass
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as fh:
                 for line in fh:
@@ -323,7 +439,7 @@ def read_events(root):
                         "input_tokens", "output_tokens",
                         "cache_creation_input_tokens", "cache_read_input_tokens"))
                     model = (msg.get("model") or "").lower()
-                    yield ts, model, tokens
+                    yield ts, model, tokens, _project_key(entry, path, root)
         except OSError:
             continue
 
@@ -332,12 +448,12 @@ def get_log_windows(limits):
     root = os.path.join(os.path.expanduser("~"), ".claude", "projects")
     if not os.path.isdir(root):
         return None
-    events = list(read_events(root))
     now = time.time()
+    events = list(read_events(root, since=now - SEVEN_DAYS))
 
     def win(seconds, key, label, subset=None):
         cutoff, total, oldest = now - seconds, 0, None
-        for ts, model, tok in events:
+        for ts, model, tok, _proj in events:
             if ts >= cutoff and (subset is None or subset in model):
                 total += tok
                 oldest = ts if oldest is None else min(oldest, ts)
@@ -353,6 +469,50 @@ def get_log_windows(limits):
     if opus["utilization"] > 0:
         windows.append(opus)
     return windows
+
+
+# ------------------------------------------------ where the tokens actually go
+#
+# Anthropic's usage endpoint reports account-wide windows with no per-project
+# breakdown, so "which project ate my week" can only be answered from Claude
+# Code's own session logs — which exist on *this* computer only. The board
+# labels the screen accordingly; work done from another machine is invisible
+# here, and quietly under-reporting would be worse than saying so.
+#
+# Shares are percentages of the window's measured tokens, not of a plan limit.
+# That sidesteps the estimated-budget problem entirely: the same measured
+# counts go into every project, so the ranking holds even where an absolute
+# percent-of-limit would be a guess.
+
+PROJECT_WINDOW_SECS = FIVE_HOURS
+PROJECT_WINDOW_LABEL = "5h"
+MAX_PROJECTS = 5
+
+
+def get_project_shares(seconds=PROJECT_WINDOW_SECS, top=MAX_PROJECTS):
+    """Rank this computer's projects by tokens spent in the trailing window.
+
+    Returns (ranked, hidden) where `hidden` is how many projects fell outside
+    the top N. Shares are of the whole window, so the visible ones won't add
+    up to 100% when anything is hidden — the board says "+N more" rather than
+    letting the missing percentage read as a rounding error."""
+    root = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+    if not os.path.isdir(root):
+        return [], 0
+    cutoff = time.time() - seconds
+    totals = {}
+    for ts, _model, tok, key in read_events(root, since=cutoff):
+        if ts >= cutoff and tok:
+            totals[key] = totals.get(key, 0) + tok
+    grand = sum(totals.values())
+    if not grand:
+        return [], 0
+    totals = _roll_up_nested(totals)
+    ranked = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
+    labels = _label_projects([k for k, _ in ranked[:top]])
+    shown = [{"name": labels[k], "share": round(100.0 * tok / grand, 1)}
+             for k, tok in ranked[:top]]
+    return shown, max(0, len(ranked) - len(shown))
 
 
 # ------------------------------------------------------------------- push loop
@@ -709,6 +869,22 @@ def run_once(cfg):
             _print_no_claude()
             return False, 0, False
     payload = {"windows": windows, "plan": plan, "source": source}
+    # Project shares ride along on both paths. They come from the local logs
+    # even when the windows above are live, because the live endpoint has no
+    # per-project breakdown to offer — the two answer different questions and
+    # are not expected to agree.
+    try:
+        projects, hidden = get_project_shares()
+    except OSError as exc:                       # unreadable logs shouldn't
+        projects, hidden = [], 0                 # cost you the usage push
+        print(f"(couldn't read project usage: {exc})", file=sys.stderr)
+    # Sent unconditionally, empty included. The firmware reads an absent key as
+    # "keep what you have" (so an older companion doesn't blank the screen), so
+    # omitting it on a quiet window would leave this morning's ranking on
+    # display under a caption claiming it covers the last 5 hours.
+    payload["projects"] = projects
+    payload["projects_window"] = PROJECT_WINDOW_LABEL
+    payload["projects_more"] = hidden
     # cfg["pi"] may be a comma-separated list — one companion can feed
     # several trackers (e.g. a Pi on the desk and a Mini on the shelf).
     targets = [t.strip() for t in str(cfg["pi"]).split(",") if t.strip()]

@@ -155,6 +155,134 @@ class ActionKeyTests(unittest.TestCase):
                          {"voice", "mode", "cancel"})
 
 
+class ProjectNameTests(unittest.TestCase):
+    """Naming the project a token belongs to.
+
+    The folder under ~/.claude/projects is path-mangled and genuinely
+    ambiguous: 'H--Projects-Kiosk-Grand' could be 'Kiosk-Grand' or
+    'Kiosk Grand' (it is the latter), and no amount of splitting on '-'
+    recovers that. These pin the rule that `cwd` wins, because getting it
+    wrong produces a plausible-looking board screen with the wrong labels.
+    """
+
+    ROOT = os.path.join("home", ".claude", "projects")
+
+    def _name(self, entry, slug):
+        key = companion._project_key(
+            entry, os.path.join(self.ROOT, slug, "s.jsonl"), self.ROOT)
+        return companion._project_name(key)
+
+    def test_cwd_wins_over_the_mangled_slug(self):
+        self.assertEqual(
+            self._name({"cwd": r"H:\Projects\Kiosk Grand"},
+                       "H--Projects-Kiosk-Grand"),
+            "Kiosk Grand")
+
+    def test_names_containing_separators_survive(self):
+        for cwd, want in ((r"H:\Projects\RigMatch.AI-main", "RigMatch.AI-main"),
+                          ("/home/dave/my-app", "my-app"),
+                          ("/srv/Website 2", "Website 2")):
+            self.assertEqual(self._name({"cwd": cwd}, "ignored"), want, cwd)
+
+    def test_trailing_separators_dont_yield_an_empty_name(self):
+        for cwd, want in ((r"H:\Projects\Thing" + "\\", "Thing"),
+                          ("/home/dave/thing/", "thing")):
+            self.assertEqual(self._name({"cwd": cwd}, "x--y-thing"), want, cwd)
+
+    def test_falls_back_to_the_slug_when_cwd_is_missing_or_junk(self):
+        for entry in ({}, {"cwd": ""}, {"cwd": "   "}, {"cwd": None}):
+            self.assertEqual(self._name(entry, "H--Projects-Sparko"), "Sparko")
+
+
+class ProjectRollupTests(unittest.TestCase):
+    """Folding nested cwds into the project a person would name.
+
+    Claude Code keys a project off the cwd, so one repo opened at three depths
+    is three rows, each understating the work.
+    """
+
+    def test_nested_paths_fold_into_a_tracked_ancestor(self):
+        got = companion._roll_up_nested({
+            "H:/Projects/Rig": 10,
+            "H:/Projects/Rig/Rig": 70,
+            "H:/Projects/Rig/Rig/chat/src-tauri": 5,
+        })
+        self.assertEqual(got, {"H:/Projects/Rig": 85})
+
+    def test_an_untracked_ancestor_is_not_invented(self):
+        # No H:/Projects/Qibb project exists, so its children stay separate
+        # rather than being grouped under a directory nobody worked in.
+        totals = {"H:/Projects/Qibb/Audio to Video": 20,
+                  "H:/Projects/Qibb/Video to Audio": 5}
+        self.assertEqual(companion._roll_up_nested(totals), totals)
+
+    def test_matching_is_case_insensitive(self):
+        got = companion._roll_up_nested({
+            "H:/Projects/sparko": 30,
+            "h:/projects/SPARKO/sub": 1,
+        })
+        self.assertEqual(got, {"H:/Projects/sparko": 31})
+
+    def test_tokens_are_never_lost_or_duplicated(self):
+        totals = {"/a": 3, "/a/b": 5, "/a/b/c": 7, "/d": 11, "/e/f": 13}
+        got = companion._roll_up_nested(totals)
+        self.assertEqual(sum(got.values()), sum(totals.values()))
+        self.assertEqual(got["/a"], 15)
+
+    def test_siblings_are_left_alone(self):
+        totals = {"/w/api": 1, "/w/web": 2}
+        self.assertEqual(companion._roll_up_nested(totals), totals)
+
+
+class ProjectLabelTests(unittest.TestCase):
+    """Turning project paths into board rows.
+
+    Two different projects must never render as the same row — a merged or
+    duplicated label is a wrong number presented confidently, which is the one
+    failure mode a usage display can't afford.
+    """
+
+    def test_same_basename_is_qualified_by_its_parent(self):
+        got = companion._label_projects(
+            ["/home/d/work/client-a/web", "/home/d/work/client-b/web"])
+        self.assertEqual(set(got.values()), {"client-a/web", "client-b/web"})
+
+    def test_unique_basenames_are_left_alone(self):
+        got = companion._label_projects(["/a/sparko", "/b/ClaudeTrackerPi"])
+        self.assertEqual(set(got.values()), {"sparko", "ClaudeTrackerPi"})
+
+    def test_labels_fit_the_board_and_stay_distinct(self):
+        keys = ["/x/" + "averylongprojectname%d" % i for i in range(3)]
+        got = companion._label_projects(keys, width=21)
+        self.assertEqual(len(set(got.values())), 3, got)
+        for label in got.values():
+            self.assertLessEqual(len(label), 21, label)
+
+    def test_long_qualified_labels_keep_the_part_that_distinguishes(self):
+        # Real case from a bench run: a project nested inside a directory of
+        # the same name. Trimming to the last N chars kept the shared basename
+        # and destroyed the parent, yielding 'main/RigMatch.AI-main' and
+        # 'ects/RigMatch.AI-main' — distinct only by a mangled prefix.
+        got = companion._label_projects(
+            ["H:/Projects/RigMatch.AI-main/RigMatch.AI-main",
+             "H:/Projects/RigMatch.AI-main"], width=21)
+        labels = list(got.values())
+        self.assertEqual(len(set(labels)), 2, labels)
+        for label in labels:
+            self.assertLessEqual(len(label), 21, label)
+            head = label.split("/")[0]
+            self.assertFalse(head.startswith("ects"), label)
+            self.assertTrue(
+                "RigMatch.AI-main".startswith(head) or "Projects".startswith(head),
+                f"{head!r} is a fragment, not a prefix of a real directory")
+
+    def test_every_key_gets_exactly_one_label(self):
+        keys = ["/a/web", "/b/web", "/c/api"]
+        got = companion._label_projects(keys)
+        self.assertEqual(sorted(got), sorted(keys))
+        self.assertEqual(len(set(got.values())), 3)
+
+
 class _FakeProc:
     returncode = 0
 

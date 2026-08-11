@@ -138,7 +138,7 @@ static bool apMode = false;
 static const char *AP_SSID = "Headroom-Setup";
 static const char *AP_PSK  = "headroom";
 static const int   API_PORT = 8080;   // what the companion probes
-static const char *FW_VERSION = "1.4.0";
+static const char *FW_VERSION = "1.5.0";
 
 // Phase 2 — self-contained: poll Anthropic's usage endpoint directly, using an
 // OAuth login pasted once via /connect. Same contract the companion uses.
@@ -146,7 +146,7 @@ static const char *CLIENT_ID   = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 static const char *REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
 static const char *USAGE_URL   = "https://api.anthropic.com/api/oauth/usage";
 static const char *OAUTH_BETA  = "oauth-2025-04-20";
-static const char *UA          = "Headroom-Mini/1.4.0";
+static const char *UA          = "Headroom-Mini/1.5.0";
 // OTA self-update (over-the-air from the GitHub release)
 static const char *RELEASES_API =
     "https://api.github.com/repos/DaveEuson/HeadroomMini/releases/latest";
@@ -178,11 +178,21 @@ static char      tzEnv[48]   = "EST5EDT,M3.2.0,M11.1.0";  // POSIX TZ, set via /
 static bool      clock24     = false; // false = 12-hour (3:45 PM), true = 24-hour
 static bool      nightDim    = true;  // ease the backlight down overnight
 static const uint8_t NIGHT_LEVEL = 40;
-static int       uiScreen    = 0;     // 0 meters 1 focus 2 history 3 sprocket 4 timer 5 actions
-static const int UI_SCREENS  = 6;
+static int       uiScreen    = 0;     // 0 meters 1 focus 2 history 3 sprocket
+                                      // 4 timer 5 actions 6 projects 7 settings
+static const int UI_SCREENS  = 8;
 static const char *SCREEN_NAMES[UI_SCREENS] =
-    {"Meters", "Focus", "History", "Sprocket", "Timer", "Actions"};
-static uint8_t   screenMask  = 0x3F;  // bit i set = screen i is in the rotation
+    {"Meters", "Focus", "History", "Sprocket",
+     "Timer", "Actions", "Projects", "Settings"};
+static uint8_t   screenMask  = 0xFF;  // bit i set = screen i is in the rotation
+// screenMask is one bit per screen in a uint8_t, and it is also what gets
+// persisted to NVS — a ninth screen needs a wider type *and* a migration, not
+// just a bigger UI_SCREENS.
+static_assert(UI_SCREENS <= 8, "screenMask (uint8_t) holds at most 8 screens");
+static const int SCREEN_TIMER    = 4;
+static const int SCREEN_ACTIONS  = 5;
+static const int SCREEN_PROJECTS = 6;
+static const int SCREEN_SETTINGS = 7;
 
 // ---- Actions: the board as an input device -------------------------------
 // The Actions screen queues a shortcut; the companion polls /api/actions and
@@ -198,6 +208,30 @@ static const ActionDef ACTIONS[] = {
 };
 static const int N_ACTIONS = sizeof(ACTIONS) / sizeof(ACTIONS[0]);
 static int actionSel = 0;             // which action a tap will fire
+
+// ---- Projects: where the tokens actually went ----------------------------
+// Anthropic's usage endpoint reports account-wide windows with no per-project
+// breakdown, so this can only come from Claude Code's own session logs on the
+// computer running the companion. That makes it "this computer", never "this
+// account": work done from a second machine or the web app is invisible here.
+// The screen says so out loud, because a ranking that silently omits half your
+// work is worse than no ranking at all.
+struct Proj { char name[22]; float share; };   // share = % of the window's tokens
+static const int MAX_PROJ = 5;
+static Proj      projects[MAX_PROJ];
+static int       nProjects  = 0;
+static int       projMore   = 0;       // ranked below the cut — "+N more"
+static char      projWindow[12] = "";  // which window the shares cover, e.g. "5h"
+static unsigned long projAt = 0;       // last time the companion sent any
+
+// ---- On-device settings --------------------------------------------------
+// The board never showed its own address once it was working, so there was no
+// way to find /settings from the device itself. This screen is the answer to
+// both halves of that: it prints the address, and it edits the one setting
+// people actually want to change without a browser.
+static int settingSel = 0;             // which row the next tap toggles
+static char settingMsg[26] = "";       // why a toggle was refused, "" = nothing
+static unsigned long settingMsgAt = 0;
 
 // Pending presses, collected until the companion polls. Entries expire so a
 // press made while the companion was closed can't fire minutes later.
@@ -316,6 +350,15 @@ static void drawCentered(const char *text, int y, uint8_t size, uint16_t color) 
   gfx->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
   int x = (240 - (int)w) / 2;
   if (x < 0) x = 0;
+  gfx->setCursor(x, y);
+  gfx->setTextColor(color);
+  gfx->print(text);
+}
+
+// Left-aligned text. Lists read as a column of labels rather than a stack of
+// centred lines, so rows the eye can scan down want this instead.
+static void drawLeft(const char *text, int x, int y, uint8_t size, uint16_t color) {
+  gfx->setTextSize(size);
   gfx->setCursor(x, y);
   gfx->setTextColor(color);
   gfx->print(text);
@@ -930,6 +973,150 @@ static void drawActions() {
     drawCentered("run companion with --actions", 304, 1, C_WARN);
 }
 
+// ---- Projects screen -----------------------------------------------------
+
+static void drawProjects() {
+  gfx->fillScreen(C_BG);
+  drawUpdateBadge(222, 20);
+  drawCentered("Top projects", 30, 2, C_INK);
+
+  // Say the scope every time. These shares come from one computer's session
+  // logs, so they answer "what did I spend it on here" — not "what did my
+  // account spend". Left unlabelled, a missing project reads as a bug rather
+  // than as work done somewhere this board can't see.
+  char cap[40];
+  if (projWindow[0]) snprintf(cap, sizeof(cap), "this computer - last %s", projWindow);
+  else               strlcpy(cap, "this computer", sizeof(cap));
+  drawCentered(cap, 54, 1, C_MUTED);
+
+  if (nProjects == 0) {
+    // Empty means two different things and they need different advice. Once a
+    // push has landed (projAt set), the companion demonstrably *is* running and
+    // simply had a quiet window — telling the user to start it would contradict
+    // the caption directly above, which says it just reported.
+    if (projAt) {
+      char quiet[36];
+      if (projWindow[0]) snprintf(quiet, sizeof(quiet), "no activity in the last %s", projWindow);
+      else               strlcpy(quiet, "no activity yet", sizeof(quiet));
+      drawCentered("all quiet", 150, 2, C_MUTED);
+      drawCentered(quiet, 182, 1, C_MUTED);
+    } else {
+      drawCentered("nothing logged yet", 150, 2, C_MUTED);
+      drawCentered("needs the companion running", 182, 1, C_MUTED);
+    }
+    return;
+  }
+
+  int y = 88;
+  for (int i = 0; i < nProjects; i++) {
+    uint16_t c = (i == 0) ? C_ACC : C_INK;   // the biggest spender stands out
+    drawLeft(projects[i].name, 14, y, 1, c);
+
+    char pct[8];
+    snprintf(pct, sizeof(pct), "%d%%", (int)(projects[i].share + 0.5f));
+    int16_t x1, y1; uint16_t w, h;
+    gfx->setTextSize(1);
+    gfx->getTextBounds(pct, 0, 0, &x1, &y1, &w, &h);
+    drawLeft(pct, 226 - (int)w, y, 1, c);    // right-aligned, so they line up
+
+    int bw = (int)(212.0f * projects[i].share / 100.0f + 0.5f);
+    if (bw < 2) bw = 2;                      // a sliver still reads as "some"
+    gfx->fillRect(14, y + 12, 212, 6, C_ACC_T);
+    gfx->fillRect(14, y + 12, bw, 6, c);
+    y += 34;
+  }
+
+  // The shares are of the whole window, so with anything hidden they stop
+  // short of 100%. Saying how many are missing keeps that from reading as a
+  // rounding bug — the same reason the meters carry "+N more".
+  if (projMore > 0) {
+    char more[24];
+    snprintf(more, sizeof(more), "+%d more", projMore);
+    drawCentered(more, y + 2, 1, C_MUTED);
+  }
+}
+
+// ---- Settings screen -----------------------------------------------------
+
+static int enabledScreenCount() {
+  return __builtin_popcount(screenMask & ((1 << UI_SCREENS) - 1));
+}
+
+// Refuse the three toggles that would strand you: the last screens standing,
+// the power-on default, and this screen itself. The web form at /settings can
+// still do all three — this guard is about not letting a stray tap on a 2"
+// display hide the only thing that tells you where that form lives.
+static bool toggleScreenAt(int i) {
+  const char *why = nullptr;
+  // Guard the *disable* direction only. Blocking both ways made a Settings row
+  // that the web form had switched off impossible to switch back on: you would
+  // tap the unchecked box and be told it stays on, while it stayed off.
+  if (i == SCREEN_SETTINGS && screenEnabled(i)) why = "Settings stays on";
+  else if (i == defaultScreen)           why = "that's the default";
+  else if (screenEnabled(i) && enabledScreenCount() <= 2)
+                                         why = "keep at least two";
+  if (why) {
+    strlcpy(settingMsg, why, sizeof(settingMsg));
+    settingMsgAt = millis();
+    return false;
+  }
+  screenMask ^= (1 << i);
+  prefs.begin("headroom", false);
+  prefs.putUChar("smask", screenMask);
+  prefs.end();
+  settingMsg[0] = 0;
+  return true;
+}
+
+static void drawSettings() {
+  gfx->fillScreen(C_BG);
+  drawCentered("Settings", 26, 2, C_INK);
+
+  // The whole reason this screen exists: a working board used to show its
+  // address nowhere, so there was no route from the device to its own config.
+  if (WiFi.status() == WL_CONNECTED) {
+    // The address is the whole point of this screen, so it gets the largest
+    // type on it — it was previously the same size as the title above it,
+    // which read as small on the bench. Splitting the port off is what buys
+    // the room: "ip:8080" at size 3 is past drawCentered's 236px ceiling for
+    // any real address, and on a longer LAN prefix it exceeded it even at
+    // size 2, which silently stepped the font down to caption size. The port
+    // never changes, so it loses nothing by moving to the line below.
+    char ip[24];
+    strlcpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip));
+    drawCentered(ip, 46, 3, C_ACC);
+    char hint[40];
+    snprintf(hint, sizeof(hint), "port %d - open in a browser", API_PORT);
+    drawCentered(hint, 76, 1, C_MUTED);
+  } else {
+    drawCentered("offline", 50, 2, C_MUTED);
+    drawCentered("no address until Wi-Fi joins", 76, 1, C_MUTED);
+  }
+  char ver[16];
+  snprintf(ver, sizeof(ver), "v%s", FW_VERSION);
+  drawCentered(ver, 90, 1, C_MUTED);
+
+  gfx->drawFastHLine(14, 106, 212, C_ACC_T);
+  drawLeft("Screens in rotation", 14, 114, 1, C_MUTED);
+
+  int y = 132;
+  for (int i = 0; i < UI_SCREENS; i++) {
+    bool sel = (i == settingSel);
+    bool on  = screenEnabled(i);
+    if (sel) gfx->fillRoundRect(10, y - 4, 220, 20, 5, C_ACC_T);
+    drawLeft(on ? "[x]" : "[ ]", 16, y, 1, on ? C_ACC : C_MUTED);
+    drawLeft(SCREEN_NAMES[i], 46, y, 1, on ? C_INK : C_MUTED);
+    y += 21;
+  }
+
+  // A refusal has to say why, or the tap just looks broken. It fades so the
+  // footer goes back to explaining the controls.
+  if (settingMsg[0] && millis() - settingMsgAt < 2500)
+    drawCentered(settingMsg, 304, 1, C_WARN);
+  else
+    drawCentered("tap toggles - swipe L/R exits", 304, 1, C_MUTED);
+}
+
 // Draw whichever screen is active (data updates / ticks call this).
 static bool pairingActive();   // defined with the pairing handlers below
 static void drawPairScreen();
@@ -941,9 +1128,11 @@ static void drawScreen() {
   if (uiScreen == 1)      drawFocus();
   else if (uiScreen == 2) drawHistory();
   else if (uiScreen == 3) drawMascot();
-  else if (uiScreen == 4) drawTimer();
-  else if (uiScreen == 5) drawActions();
-  else                    drawMeters();
+  else if (uiScreen == SCREEN_TIMER)    drawTimer();
+  else if (uiScreen == SCREEN_ACTIONS)  drawActions();
+  else if (uiScreen == SCREEN_PROJECTS) drawProjects();
+  else if (uiScreen == SCREEN_SETTINGS) drawSettings();
+  else                                  drawMeters();
 }
 
 // ---- running out puts the countdown up by itself --------------------------
@@ -971,10 +1160,10 @@ static void checkExhaustion() {
   if (!ep || ep == exhaustEpisode) return;
   exhaustEpisode = ep;                           // claim it either way
 
-  if (uiScreen == 4) return;                     // already showing
-  if (!screenEnabled(4)) return;                 // Timer taken out of the rotation
+  if (uiScreen == SCREEN_TIMER) return;          // already showing
+  if (!screenEnabled(SCREEN_TIMER)) return;      // Timer taken out of the rotation
   if (pairingActive()) return;                   // the one-time code owns the screen
-  uiScreen = 4;
+  uiScreen = SCREEN_TIMER;
 }
 
 // ------------------------------------------------------------ phone alerts
@@ -1148,6 +1337,19 @@ static void handleStatus() {
   // counts is usually a reset time that never parsed.
   doc["screen"] = uiScreen;
   doc["screen_name"] = SCREEN_NAMES[uiScreen];
+  // Project shares, and how long ago they arrived — a Projects screen stuck on
+  // yesterday's ranking is a companion that stopped pushing, not a board bug.
+  if (nProjects > 0) {
+    JsonArray pj = doc["projects"].to<JsonArray>();
+    for (int i = 0; i < nProjects; i++) {
+      JsonObject o = pj.add<JsonObject>();
+      o["name"] = projects[i].name;
+      o["share"] = projects[i].share;
+    }
+    doc["projects_window"] = projWindow;
+    doc["projects_more"] = projMore;
+    doc["projects_age_s"] = (long)((millis() - projAt) / 1000);
+  }
   doc["server_time"] = (long)time(nullptr);
   String out;
   serializeJson(doc, out);
@@ -1192,6 +1394,25 @@ static void handlePush() {
     dst.resets_at = parseISO(w["resets_at"] | (const char *)nullptr);
   }
   strlcpy(plan, doc["plan"] | "", sizeof(plan));
+  // Optional: per-project shares, from the companion reading Claude Code's own
+  // session logs. An older companion simply omits the key — leave the last set
+  // standing rather than blanking the screen on every push.
+  if (doc["projects"].is<JsonArray>()) {
+    nProjects = 0;
+    for (JsonObject p : doc["projects"].as<JsonArray>()) {
+      if (nProjects >= MAX_PROJ) break;
+      const char *nm = p["name"] | "";
+      if (!nm[0]) continue;
+      Proj &d = projects[nProjects++];
+      strlcpy(d.name, nm, sizeof(d.name));
+      float s = p["share"] | 0.0f;
+      d.share = s < 0 ? 0 : (s > 100 ? 100 : s);
+    }
+    strlcpy(projWindow, doc["projects_window"] | "", sizeof(projWindow));
+    projMore = doc["projects_more"] | 0;
+    if (projMore < 0) projMore = 0;
+    projAt = millis();
+  }
   lastPushMs = millis();
   sendJson(200, "{\"ok\":true}");
   noteUsageActivity();
@@ -1483,27 +1704,39 @@ static void loadCreds() {
   pushToken  = prefs.getString("ptok", "");
   bool timerMigrated = prefs.getBool("tmrmig", false);
   bool actionsMigrated = prefs.getBool("actmig", false);
+  bool projectsMigrated = prefs.getBool("prjmig", false);
+  bool settingsMigrated = prefs.getBool("setmig", false);
   prefs.end();
   selfHosted = accessTok.length() > 0;
   if (defaultScreen < 0 || defaultScreen >= UI_SCREENS) defaultScreen = 0;
   screenMask &= (1 << UI_SCREENS) - 1;      // ignore stray high bits
   screenMask |= (1 << defaultScreen);       // the default is always in the rotation
-  // One-time: reveal the new Timer screen for installs that predate it, then
-  // never touch the mask again (so a later un-check sticks).
-  if (!timerMigrated) {
-    screenMask |= (1 << 4);
+  // One-time: reveal each screen added since the install was set up, then never
+  // touch the mask again (so a later un-check sticks). Settings especially — it
+  // is the only place the board prints its own address, so an upgrade that left
+  // it hidden would keep the problem it was added to fix. Actions and Projects
+  // are inert without a companion, so revealing them costs nothing.
+  //
+  // One transaction, not one per screen: each prefs.end() is a commit to
+  // wear-levelled flash, and doing them separately writes three superseded
+  // values of smask before the one that matters. The next new screen is one
+  // more line inside the block rather than a fifth copy of it.
+  if (!timerMigrated || !actionsMigrated || !projectsMigrated ||
+      !settingsMigrated) {
     prefs.begin("headroom", false);
+    if (!timerMigrated) {
+      screenMask |= (1 << SCREEN_TIMER);    prefs.putBool("tmrmig", true);
+    }
+    if (!actionsMigrated) {
+      screenMask |= (1 << SCREEN_ACTIONS);  prefs.putBool("actmig", true);
+    }
+    if (!projectsMigrated) {
+      screenMask |= (1 << SCREEN_PROJECTS); prefs.putBool("prjmig", true);
+    }
+    if (!settingsMigrated) {
+      screenMask |= (1 << SCREEN_SETTINGS); prefs.putBool("setmig", true);
+    }
     prefs.putUChar("smask", screenMask);
-    prefs.putBool("tmrmig", true);
-    prefs.end();
-  }
-  // Same one-time reveal for the Actions screen. The screen itself is inert
-  // until you run the companion with --actions, so showing it is harmless.
-  if (!actionsMigrated) {
-    screenMask |= (1 << 5);
-    prefs.begin("headroom", false);
-    prefs.putUChar("smask", screenMask);
-    prefs.putBool("actmig", true);
     prefs.end();
   }
   uiScreen = defaultScreen;                 // boot on the chosen screen
@@ -2548,10 +2781,36 @@ static void dispatchGesture(uint8_t g) {
   lastUserTouch = millis();                 // pause auto-rotate while you interact
   if (screenOff) { wake(); return; }        // a dimmed screen wakes on any touch
 
+  // No double-tap shortcut to Settings, deliberately. pollTouch dispatches on
+  // every finger release, so the first tap of a double-tap has already been
+  // delivered as a plain tap before 0x0B ever arrives — on the Actions screen
+  // that meant queueing a real keystroke to the user's computer and *then*
+  // jumping. Making it correct would mean holding every tap ~250ms to see
+  // whether a second one follows, which is visible lag on "next screen" for a
+  // shortcut that only duplicates paging. Settings is in the rotation instead.
+
+  // Settings rebinds up/down to move the cursor and tap to toggle the row.
+  // Left/right still page away, so there is always a way out.
+  if (uiScreen == SCREEN_SETTINGS && !pairingActive()) {
+    switch (g) {
+      case 0x01: settingSel = (settingSel + UI_SCREENS - 1) % UI_SCREENS;
+                 drawSettings(); return;                  // swipe up   -> previous
+      case 0x02: settingSel = (settingSel + 1) % UI_SCREENS;
+                 drawSettings(); return;                  // swipe down -> next
+      case 0x03: cycleScreen(-1); return;
+      case 0x04: cycleScreen(+1); return;
+      case 0x0C: cycleScreen(+1); return;                 // long press -> leave
+      default:                                            // tap -> toggle row
+        toggleScreenAt(settingSel);
+        drawSettings();
+        return;
+    }
+  }
+
   // The Actions screen rebinds tap and up/down: a tap has to *do* something
   // there rather than page away, and up/down picks which shortcut to send.
   // Left/right still change screens, so there's always a way out.
-  if (uiScreen == 5 && !pairingActive()) {
+  if (uiScreen == SCREEN_ACTIONS && !pairingActive()) {
     switch (g) {
       case 0x01: actionSel = (actionSel + N_ACTIONS - 1) % N_ACTIONS;
                  drawActions(); return;                   // swipe up   -> previous
@@ -2755,7 +3014,7 @@ void loop() {
   }
   // Timer screen ticks its countdown every second (redraws only the digits).
   static unsigned long lastSec = 0;
-  if (uiScreen == 4 && !screenOff && !pairingActive() && timerResetAt &&
+  if (uiScreen == SCREEN_TIMER && !screenOff && !pairingActive() && timerResetAt &&
       millis() - lastSec >= 1000) {
     lastSec = millis();
     drawTimerClock();
