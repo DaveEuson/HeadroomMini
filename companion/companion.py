@@ -352,8 +352,21 @@ def _label_projects(keys, width=21):
 
     out, used = {}, {}
     for k, n in names.items():
-        if len(n) > width:                     # keep the tail: it distinguishes
-            n = n[-width:]
+        if len(n) > width:
+            # Trim from the *end* of each part, never the front. A qualified
+            # label is "parent/base" where the parent is what distinguishes it
+            # and the base is what they share, so taking the last `width` chars
+            # would eat the parent and leave two rows differing only in their
+            # ruined prefix ("main/foo" vs "ects/foo"). Give the parent a fixed
+            # slice and the base the rest.
+            if "/" in n:
+                parent, base = n.split("/", 1)
+                pw = max(4, width // 3)
+                parent = parent[:pw]
+                base = base[:max(1, width - len(parent) - 1)]
+                n = parent + "/" + base
+            else:
+                n = n[:width]
         if n in used:                          # still colliding after trimming
             used[n] += 1
             suffix = "~%d" % used[n]

@@ -218,6 +218,24 @@ class ProjectLabelTests(unittest.TestCase):
         for label in got.values():
             self.assertLessEqual(len(label), 21, label)
 
+    def test_long_qualified_labels_keep_the_part_that_distinguishes(self):
+        # Real case from a bench run: a project nested inside a directory of
+        # the same name. Trimming to the last N chars kept the shared basename
+        # and destroyed the parent, yielding 'main/RigMatch.AI-main' and
+        # 'ects/RigMatch.AI-main' — distinct only by a mangled prefix.
+        got = companion._label_projects(
+            ["H:/Projects/RigMatch.AI-main/RigMatch.AI-main",
+             "H:/Projects/RigMatch.AI-main"], width=21)
+        labels = list(got.values())
+        self.assertEqual(len(set(labels)), 2, labels)
+        for label in labels:
+            self.assertLessEqual(len(label), 21, label)
+            head = label.split("/")[0]
+            self.assertFalse(head.startswith("ects"), label)
+            self.assertTrue(
+                "RigMatch.AI-main".startswith(head) or "Projects".startswith(head),
+                f"{head!r} is a fragment, not a prefix of a real directory")
+
     def test_every_key_gets_exactly_one_label(self):
         keys = ["/a/web", "/b/web", "/c/api"]
         got = companion._label_projects(keys)
