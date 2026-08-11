@@ -81,6 +81,40 @@ static Arduino_GFX *gfx =
 // frame into RAM, then blit it in one pass so the animation never flickers.
 static Arduino_Canvas *mascotBuf = nullptr;
 
+// ---- layout: one design space, many panels ------------------------------
+// Every screen is authored against this 240x320 reference and mapped to the
+// real panel at draw time. The alternative -- computing each coordinate from
+// gfx->width()/height() at the point of use -- means touching every drawing
+// call and re-tuning spacing that already works, on a panel nobody has yet.
+//
+// On the reference panel the mapping is the identity, so this refactor cannot
+// move a single pixel on hardware that exists today. That is the property that
+// makes it verifiable now rather than whenever a bigger board arrives.
+static const int REF_W = 240;
+static const int REF_H = 320;
+static int     scrW    = REF_W;     // real panel, filled in at boot
+static int     scrH    = REF_H;
+static uint8_t uiScale = 1;         // bitmap-font multiplier for larger panels
+
+// Named mapX/mapY rather than anything shorter: the mascot sprite already has
+// locals called lx, rx, px and my, and a helper those would shadow is a trap
+// for whoever edits that function next.
+static inline int mapX(int x) { return (int)((long)x * scrW / REF_W); }
+static inline int mapY(int y) { return (int)((long)y * scrH / REF_H); }
+// Fonts are bitmaps, so they scale in whole steps or not at all: a 410px-wide
+// panel would otherwise render the same 6px glyphs across nearly twice the
+// glass. Rounded rather than truncated, so 410/240 reads as 2, not 1.
+static inline uint8_t mapSz(uint8_t s) { return (uint8_t)(s * uiScale); }
+
+static void initLayout() {
+  scrW = gfx->width();
+  scrH = gfx->height();
+  int sw = (scrW + REF_W / 2) / REF_W;
+  int sh = (scrH + REF_H / 2) / REF_H;
+  int s = sw < sh ? sw : sh;        // never let one axis outgrow the other
+  uiScale = (uint8_t)(s < 1 ? 1 : s);
+}
+
 // Claude night palette in RGB565 (macro provided by Arduino_GFX)
 static const uint16_t C_BG    = RGB565(0x26, 0x26, 0x24);
 static const uint16_t C_INK   = RGB565(0xF5, 0xF4, 0xEF);
@@ -337,20 +371,23 @@ static void fmtClock(time_t resets, char *out, size_t n) {
 // so long strings clip to a smaller font instead of wrapping around the edge.
 // The default GFX text-wrap is left ON only as a last-resort safety net for a
 // single word that is still too wide at size 1.
+// `y` and `size` are in design space; both are mapped to the real panel here,
+// so callers keep reading as the 240x320 layout they were written against.
 static void drawCentered(const char *text, int y, uint8_t size, uint16_t color) {
-  const int MAXW = 236;                 // 240px screen, 2px breathing room each side
+  const int MAXW = scrW - mapX(4);        // 2px breathing room each side, scaled
+  uint8_t sz = mapSz(size);
   int16_t x1, y1; uint16_t w, h;
-  while (size > 1) {
-    gfx->setTextSize(size);
+  while (sz > 1) {
+    gfx->setTextSize(sz);
     gfx->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
     if ((int)w <= MAXW) break;
-    size--;
+    sz--;
   }
-  gfx->setTextSize(size);
+  gfx->setTextSize(sz);
   gfx->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
-  int x = (240 - (int)w) / 2;
+  int x = (scrW - (int)w) / 2;
   if (x < 0) x = 0;
-  gfx->setCursor(x, y);
+  gfx->setCursor(x, mapY(y));
   gfx->setTextColor(color);
   gfx->print(text);
 }
@@ -358,8 +395,8 @@ static void drawCentered(const char *text, int y, uint8_t size, uint16_t color) 
 // Left-aligned text. Lists read as a column of labels rather than a stack of
 // centred lines, so rows the eye can scan down want this instead.
 static void drawLeft(const char *text, int x, int y, uint8_t size, uint16_t color) {
-  gfx->setTextSize(size);
-  gfx->setCursor(x, y);
+  gfx->setTextSize(mapSz(size));
+  gfx->setCursor(mapX(x), mapY(y));
   gfx->setTextColor(color);
   gfx->print(text);
 }
@@ -390,19 +427,21 @@ static void readBattery() {
   batCharging = v >= 4.25f;                          // held above full = on USB
 }
 
-// Small battery glyph at (x,y); nothing drawn when no battery is present.
+// Small battery glyph at (x,y) in design space; nothing drawn when no battery
+// is present.
 static void drawBattery(int x, int y) {
   if (batPct < 0) return;
-  const int w = 24, h = 12;
+  const int w = mapX(24), h = mapY(12);
+  const int px = mapX(x), py = mapY(y);
   uint16_t c = batPct <= 10 ? C_CRIT : batPct <= 30 ? C_WARN : C_ACC;
-  gfx->drawRect(x, y, w, h, C_MUTED);
-  gfx->fillRect(x + w, y + 3, 2, h - 6, C_MUTED);    // terminal nub
-  int fw = (w - 4) * batPct / 100;
-  if (fw > 0) gfx->fillRect(x + 2, y + 2, fw, h - 4, c);
+  gfx->drawRect(px, py, w, h, C_MUTED);
+  gfx->fillRect(px + w, py + mapY(3), mapX(2), h - mapY(6), C_MUTED);  // nub
+  int fw = (w - mapX(4)) * batPct / 100;
+  if (fw > 0) gfx->fillRect(px + mapX(2), py + mapY(2), fw, h - mapY(4), c);
   if (batCharging) {                                 // '+' = charging / on USB
-    gfx->setTextSize(1);
+    gfx->setTextSize(mapSz(1));
     gfx->setTextColor(C_ACC);
-    gfx->setCursor(x - 8, y + 3);
+    gfx->setCursor(px - mapX(8), py + mapY(3));
     gfx->print("+");
   }
 }
@@ -411,9 +450,11 @@ static void drawBattery(int x, int y) {
 // a newer release has been seen online; harmless no-op otherwise.
 static void drawUpdateBadge(int cx, int cy) {
   if (!updateAvailable) return;
-  gfx->fillCircle(cx, cy, 8, C_ACC);
-  gfx->fillTriangle(cx, cy - 4, cx - 4, cy + 1, cx + 4, cy + 1, C_BG);  // arrowhead
-  gfx->fillRect(cx - 1, cy, 3, 5, C_BG);                                // shaft
+  const int x = mapX(cx), y = mapY(cy), r = mapX(8);
+  gfx->fillCircle(x, y, r, C_ACC);
+  gfx->fillTriangle(x, y - mapY(4), x - mapX(4), y + mapY(1),
+                    x + mapX(4), y + mapY(1), C_BG);          // arrowhead
+  gfx->fillRect(x - mapX(1), y, mapX(3), mapY(5), C_BG);      // shaft
 }
 
 static void drawMeters() {
@@ -428,21 +469,21 @@ static void drawMeters() {
     strftime(buf, sizeof(buf), clock24 ? "%H:%M" : "%I:%M %p", &tmnow);
     const char *clk = buf;
     if (!clock24 && buf[0] == '0') clk = buf + 1;   // "03:45 PM" -> "3:45 PM"
-    gfx->setTextSize(4);
+    gfx->setTextSize(mapSz(4));
     gfx->setTextColor(C_INK);
-    gfx->setCursor(10, 10);
+    gfx->setCursor(mapX(10), mapY(10));
     gfx->print(clk);
   } else {
-    gfx->setTextSize(2);
+    gfx->setTextSize(mapSz(2));
     gfx->setTextColor(C_MUTED);
-    gfx->setCursor(10, 16);
+    gfx->setCursor(mapX(10), mapY(16));
     gfx->print("--:--");
   }
   if (plan[0]) {
     snprintf(buf, sizeof(buf), "%s plan", plan);
-    gfx->setTextSize(1);
+    gfx->setTextSize(mapSz(1));
     gfx->setTextColor(C_MUTED);
-    gfx->setCursor(12, 46);
+    gfx->setCursor(mapX(12), mapY(46));
     gfx->print(buf);
   }
 
@@ -488,29 +529,30 @@ static void drawMeters() {
     uint16_t fill  = left <= 10 ? C_CRIT  : left <= 30 ? C_WARN  : C_ACC;
     uint16_t track = left <= 10 ? C_CRIT_T: left <= 30 ? C_WARN_T: C_ACC_T;
 
-    gfx->setTextSize(2);
+    gfx->setTextSize(mapSz(2));
     gfx->setTextColor(C_INK);
-    gfx->setCursor(12, y);
+    gfx->setCursor(mapX(12), mapY(y));
     gfx->print(w.label);
 
     if (showUsed) snprintf(buf, sizeof(buf), "%d%% used", (int)(w.utilization + 0.5f));
     else          snprintf(buf, sizeof(buf), "%d%% left", (int)(left + 0.5f));
     int16_t x1, y1; uint16_t tw, th;
-    gfx->setTextSize(2);
+    gfx->setTextSize(mapSz(2));
     gfx->getTextBounds(buf, 0, 0, &x1, &y1, &tw, &th);
-    gfx->setCursor(228 - (int)tw, y + 22);
+    gfx->setCursor(mapX(228) - (int)tw, mapY(y + 22));   // right-aligned
     gfx->print(buf);
 
     int barY = y + 44;
-    gfx->fillRoundRect(12, barY, 216, 14, 7, track);
-    int wpx = (int)(216.0f * left / 100.0f);
-    if (wpx < 8) wpx = 8;
-    gfx->fillRoundRect(12, barY, wpx, 14, 7, fill);
+    const int barX = mapX(12), barW = mapX(216), barH = mapY(14);
+    gfx->fillRoundRect(barX, mapY(barY), barW, barH, barH / 2, track);
+    int wpx = (int)(barW * left / 100.0f);
+    if (wpx < mapX(8)) wpx = mapX(8);
+    gfx->fillRoundRect(barX, mapY(barY), wpx, barH, barH / 2, fill);
 
     fmtCountdown(w.resets_at, buf, sizeof(buf));
-    gfx->setTextSize(2);
+    gfx->setTextSize(mapSz(2));
     gfx->setTextColor(C_MUTED);
-    gfx->setCursor(12, barY + 18);
+    gfx->setCursor(mapX(12), mapY(barY + 18));
     gfx->print(buf);
 
     y += 82;
@@ -518,8 +560,8 @@ static void drawMeters() {
 
   // footer: how fresh the data is, plus a hint if more windows exist than fit.
   if (lastPushMs) {
-    gfx->setTextSize(1);
-    gfx->setCursor(10, 306);
+    gfx->setTextSize(mapSz(1));
+    gfx->setCursor(mapX(10), mapY(306));
     unsigned long age = (millis() - lastPushMs) / 1000;
     if (age > 600) {
       gfx->setTextColor(C_WARN);
@@ -569,11 +611,11 @@ static void drawFocus() {
   drawCentered(buf, 96, 8, fill);
   drawCentered(showUsed ? "used" : "left", 184, 2, C_MUTED);
 
-  int barY = 220;
-  gfx->fillRoundRect(20, barY, 200, 16, 8, C_ACC_T);
-  int wpx = (int)(200.0f * left / 100.0f);
-  if (wpx < 10) wpx = 10;
-  gfx->fillRoundRect(20, barY, wpx, 16, 8, fill);
+  const int fbX = mapX(20), fbW = mapX(200), fbH = mapY(16), fbY = mapY(220);
+  gfx->fillRoundRect(fbX, fbY, fbW, fbH, fbH / 2, C_ACC_T);
+  int wpx = (int)(fbW * left / 100.0f);
+  if (wpx < mapX(10)) wpx = mapX(10);
+  gfx->fillRoundRect(fbX, fbY, wpx, fbH, fbH / 2, fill);
 
   // Projection (session window only): burn rate over the last ~hour of history
   // vs. time to reset.
@@ -683,7 +725,7 @@ static void drawHistory() {
     drawCentered("collecting...", 150, 1, C_MUTED);
     return;
   }
-  const int gx = 16, gy = 104, gw = 208, gh = 150;
+  const int gx = mapX(16), gy = mapY(104), gw = mapX(208), gh = mapY(150);
   gfx->drawFastHLine(gx, gy + gh, gw, C_MUTED);          // baseline (0%)
   gfx->drawFastHLine(gx, gy, gw, C_ACC_T);               // 100% guide
   float bw = (float)gw / HIST_LEN;
@@ -736,7 +778,10 @@ static void noteUsageActivity() {
 // band above the caption, so the caption/version/badge are left intact and the
 // per-frame tick stays cheap. Each mood has its own motion.
 static void drawSprocketAnim(int mood, int frame) {
-  const int S = 18, ox = (240 - 11 * S) / 2, oy0 = 44;
+  // The sprite is 11x11 cells: scale the cell, then centre it. Mapping each
+  // of the ~30 fillRects below individually would round each one separately
+  // and pull the pixel art out of alignment with itself.
+  const int S = 18 * uiScale, ox = (scrW - 11 * S) / 2, oy0 = mapY(44);
 
   int bob = 0, shake = 0;
   if      (mood == 6) bob   = (frame % 4 < 2) ? -4 : 0;   // party: bounce
@@ -773,7 +818,7 @@ static void drawSprocketAnim(int mood, int frame) {
     gfx->fillRect(mx + S, my + S / 3, S, S / 3, C_OUT);
     int n = 1 + (frame % 3);                       // z … z z … z z z …
     gfx->setTextColor(C_MUTED);
-    gfx->setTextSize(1);
+    gfx->setTextSize(uiScale);
     for (int i = 0; i < n; i++) {
       gfx->setCursor(px + 9 * S + i * 6, oy + S - i * 9);
       gfx->print("z");
@@ -817,7 +862,7 @@ static void drawSprocketAnim(int mood, int frame) {
 // redraw of this whole screen into the buffer.
 static void drawMascot() {
   if (!mascotBuf) {                  // lazily allocate the framebuffer (PSRAM)
-    mascotBuf = new Arduino_Canvas(240, 320, gfx);
+    mascotBuf = new Arduino_Canvas(scrW, scrH, gfx);
     mascotBuf->begin(GFX_SKIP_OUTPUT_BEGIN);          // display is already begun
     if (!mascotBuf->getFramebuffer()) { delete mascotBuf; mascotBuf = nullptr; }
   }
@@ -828,9 +873,9 @@ static void drawMascot() {
   drawUpdateBadge(222, 20);          // top-right (no battery on this screen)
   char vbuf[16];
   snprintf(vbuf, sizeof(vbuf), "v%s", FW_VERSION);
-  gfx->setTextSize(1);
+  gfx->setTextSize(mapSz(1));
   gfx->setTextColor(C_MUTED);
-  gfx->setCursor(8, 12);             // firmware version, top-left
+  gfx->setCursor(mapX(8), mapY(12));   // firmware version, top-left
   gfx->print(vbuf);
 
   int mood = mascotMoodNow();
@@ -840,8 +885,10 @@ static void drawMascot() {
                    : mood == 2 ? "running low!"
                    : mood == 5 ? "out of tokens"
                    : mood == 3 ? "resting - no usage" : "waiting for usage";
-  const int S = 18;
-  int cy = 44 + 11 * S + 14;
+  // Caption sits under the sprite, so it follows the scaled cell size rather
+  // than a design-space constant -- otherwise it overlaps on a larger panel.
+  const int S = 18 * uiScale;
+  int cy = (mapY(44) + 11 * S + mapY(14)) * REF_H / scrH;   // back to design space
   drawCentered(word, cy, 2, mc);
 
   // Stat line: the fullest window's %, plus its reset countdown.
@@ -881,7 +928,7 @@ static void drawTimerClock() {
              : s < 300   ? C_CRIT
              : s < 1800  ? C_WARN
                          : C_ACC;
-  gfx->fillRect(0, 150, 240, 52, C_BG);     // clear the digits band
+  gfx->fillRect(0, mapY(150), scrW, mapY(52), C_BG);   // clear the digits band
   drawCentered(b, 156, 4, c);
 }
 
@@ -960,7 +1007,8 @@ static void drawActions() {
   int y = 108;
   for (int i = 0; i < N_ACTIONS; i++) {
     bool sel = (i == actionSel);
-    if (sel) gfx->fillRoundRect(14, y - 8, 212, 46, 10, C_ACC_T);
+    if (sel) gfx->fillRoundRect(mapX(14), mapY(y - 8), mapX(212), mapY(46),
+                                mapX(10), C_ACC_T);
     drawCentered(ACTIONS[i].label, y, 2, sel ? C_ACC : C_MUTED);
     drawCentered(ACTIONS[i].keys, y + 22, 1, C_MUTED);
     y += 56;
@@ -1015,14 +1063,20 @@ static void drawProjects() {
     char pct[8];
     snprintf(pct, sizeof(pct), "%d%%", (int)(projects[i].share + 0.5f));
     int16_t x1, y1; uint16_t w, h;
-    gfx->setTextSize(1);
+    gfx->setTextSize(mapSz(1));
     gfx->getTextBounds(pct, 0, 0, &x1, &y1, &w, &h);
-    drawLeft(pct, 226 - (int)w, y, 1, c);    // right-aligned, so they line up
+    // Right-aligned. Positioned with the raw cursor, not drawLeft: the width
+    // from getTextBounds is in real pixels, and drawLeft maps its x from
+    // design space, so subtracting one from the other mixes the two.
+    gfx->setTextColor(c);
+    gfx->setCursor(mapX(226) - (int)w, mapY(y));
+    gfx->print(pct);
 
-    int bw = (int)(212.0f * projects[i].share / 100.0f + 0.5f);
-    if (bw < 2) bw = 2;                      // a sliver still reads as "some"
-    gfx->fillRect(14, y + 12, 212, 6, C_ACC_T);
-    gfx->fillRect(14, y + 12, bw, 6, c);
+    const int barX = mapX(14), barW = mapX(212), barH = mapY(6);
+    int bw = (int)(barW * projects[i].share / 100.0f + 0.5f);
+    if (bw < mapX(2)) bw = mapX(2);          // a sliver still reads as "some"
+    gfx->fillRect(barX, mapY(y + 12), barW, barH, C_ACC_T);
+    gfx->fillRect(barX, mapY(y + 12), bw, barH, c);
     y += 34;
   }
 
@@ -1096,14 +1150,15 @@ static void drawSettings() {
   snprintf(ver, sizeof(ver), "v%s", FW_VERSION);
   drawCentered(ver, 90, 1, C_MUTED);
 
-  gfx->drawFastHLine(14, 106, 212, C_ACC_T);
+  gfx->drawFastHLine(mapX(14), mapY(106), mapX(212), C_ACC_T);
   drawLeft("Screens in rotation", 14, 114, 1, C_MUTED);
 
   int y = 132;
   for (int i = 0; i < UI_SCREENS; i++) {
     bool sel = (i == settingSel);
     bool on  = screenEnabled(i);
-    if (sel) gfx->fillRoundRect(10, y - 4, 220, 20, 5, C_ACC_T);
+    if (sel) gfx->fillRoundRect(mapX(10), mapY(y - 4), mapX(220), mapY(20),
+                                mapX(5), C_ACC_T);
     drawLeft(on ? "[x]" : "[ ]", 16, y, 1, on ? C_ACC : C_MUTED);
     drawLeft(SCREEN_NAMES[i], 46, y, 1, on ? C_INK : C_MUTED);
     y += 21;
@@ -2004,9 +2059,9 @@ static void drawUpdateProgress(int pct) {
   char b[8];
   snprintf(b, sizeof(b), "%d%%", pct);
   drawCentered(b, 150, 4, C_ACC);
-  gfx->drawRect(30, 208, 180, 16, C_MUTED);
-  int w = 176 * pct / 100;
-  if (w > 0) gfx->fillRect(32, 210, w, 12, C_ACC);
+  gfx->drawRect(mapX(30), mapY(208), mapX(180), mapY(16), C_MUTED);
+  int w = mapX(176) * pct / 100;
+  if (w > 0) gfx->fillRect(mapX(32), mapY(210), w, mapY(12), C_ACC);
   drawCentered("keep it powered", 244, 1, C_MUTED);
 }
 
@@ -2951,6 +3006,7 @@ void setup() {
   ledcAttachPin(LCD_BL, BL_CHANNEL);
   setBacklight(255);
   gfx->begin(40000000);
+  initLayout();                      // must precede any drawing
   drawSplash("starting...", nullptr);
   sensorsBegin();                    // touch + IMU on the shared I2C bus
 
