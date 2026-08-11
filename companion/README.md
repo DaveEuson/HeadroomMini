@@ -179,6 +179,12 @@ Shares are percentages of the tokens actually measured, not of a plan limit.
 That keeps the ranking trustworthy even when an absolute percent-of-limit would
 be an estimate — every project is counted the same way.
 
+**Nested directories roll up.** Claude Code keys a project off the working
+directory, so opening a repo, a subdirectory of it, and a package inside that
+would otherwise be three rows that each understate the work. Each one folds
+into the nearest ancestor that is *also* a project you've worked in — an
+ancestor you never opened is never invented as a grouping.
+
 Project names come from each event's own `cwd`, not the folder name under
 `~/.claude/projects`. Those folder names are path-mangled and can't be reversed:
 `H--Projects-Kiosk-Grand` is the project "Kiosk Grand", but nothing in the slug

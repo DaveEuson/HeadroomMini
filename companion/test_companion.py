@@ -194,6 +194,46 @@ class ProjectNameTests(unittest.TestCase):
             self.assertEqual(self._name(entry, "H--Projects-Sparko"), "Sparko")
 
 
+class ProjectRollupTests(unittest.TestCase):
+    """Folding nested cwds into the project a person would name.
+
+    Claude Code keys a project off the cwd, so one repo opened at three depths
+    is three rows, each understating the work.
+    """
+
+    def test_nested_paths_fold_into_a_tracked_ancestor(self):
+        got = companion._roll_up_nested({
+            "H:/Projects/Rig": 10,
+            "H:/Projects/Rig/Rig": 70,
+            "H:/Projects/Rig/Rig/chat/src-tauri": 5,
+        })
+        self.assertEqual(got, {"H:/Projects/Rig": 85})
+
+    def test_an_untracked_ancestor_is_not_invented(self):
+        # No H:/Projects/Qibb project exists, so its children stay separate
+        # rather than being grouped under a directory nobody worked in.
+        totals = {"H:/Projects/Qibb/Audio to Video": 20,
+                  "H:/Projects/Qibb/Video to Audio": 5}
+        self.assertEqual(companion._roll_up_nested(totals), totals)
+
+    def test_matching_is_case_insensitive(self):
+        got = companion._roll_up_nested({
+            "H:/Projects/sparko": 30,
+            "h:/projects/SPARKO/sub": 1,
+        })
+        self.assertEqual(got, {"H:/Projects/sparko": 31})
+
+    def test_tokens_are_never_lost_or_duplicated(self):
+        totals = {"/a": 3, "/a/b": 5, "/a/b/c": 7, "/d": 11, "/e/f": 13}
+        got = companion._roll_up_nested(totals)
+        self.assertEqual(sum(got.values()), sum(totals.values()))
+        self.assertEqual(got["/a"], 15)
+
+    def test_siblings_are_left_alone(self):
+        totals = {"/w/api": 1, "/w/web": 2}
+        self.assertEqual(companion._roll_up_nested(totals), totals)
+
+
 class ProjectLabelTests(unittest.TestCase):
     """Turning project paths into board rows.
 

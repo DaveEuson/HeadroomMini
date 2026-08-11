@@ -331,6 +331,39 @@ def _project_name(key):
     return base.strip("-").split("-")[-1] if "/" not in key and "-" in base else base
 
 
+def _roll_up_nested(totals):
+    """Fold each project into the nearest ancestor that is also a project.
+
+    Claude Code keys a project directory off the cwd, so opening a repo, a
+    subdirectory of it, and a package inside that yields three "projects" that
+    are one thing to the person who owns them — split across three rows and
+    understated in each.
+
+    Only folds into an ancestor that is *itself* tracked. H:/Projects/Qibb/Audio
+    to Video stays put when there is no H:/Projects/Qibb project, because
+    inventing a grouping the user never worked in would be a different kind of
+    wrong. Matching is case-insensitive: Windows hands back whatever casing the
+    shell used, and H:/Projects and h:/projects are the same directory."""
+    canon = {}                                  # lowercased path -> real key
+    for k in totals:
+        canon.setdefault(k.lower(), k)
+    root_of = {}
+    for k in sorted(totals, key=len):           # ancestors are shorter, so
+        cur, found = k, None                    # they resolve first
+        while "/" in cur:
+            cur = cur.rsplit("/", 1)[0]
+            owner = canon.get(cur.lower())
+            if owner is not None and owner != k:
+                found = root_of.get(owner, owner)
+                break
+        root_of[k] = found or k
+    merged = {}
+    for k, tok in totals.items():
+        r = root_of[k]
+        merged[r] = merged.get(r, 0) + tok
+    return merged
+
+
 def _label_projects(keys, width=21):
     """Board labels for a set of project paths: short, and never ambiguous.
 
@@ -474,6 +507,7 @@ def get_project_shares(seconds=PROJECT_WINDOW_SECS, top=MAX_PROJECTS):
     grand = sum(totals.values())
     if not grand:
         return [], 0
+    totals = _roll_up_nested(totals)
     ranked = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
     labels = _label_projects([k for k, _ in ranked[:top]])
     shown = [{"name": labels[k], "share": round(100.0 * tok / grand, 1)}
