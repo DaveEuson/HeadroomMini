@@ -32,11 +32,16 @@ Fixed URLs the site depends on (resolve once a Release exists):
 1. [ ] **Bump the version.** Firmware `FW_VERSION` + `UA` in
        `firmware/src/main.cpp`; companion `USER_AGENT` in
        `companion/companion.py` if it changed. Keep them in step with the tag.
-2. [ ] **Green CI on the branch** — `firmware.yml` (the only pre-tag compile
+2. [ ] **Write the notes** into `docs/release-notes/vX.Y.Z.md`. Every release
+       through v1.3.1 published with an **empty body**, because this checklist
+       never said to write one and the notes only ever existed in the terminal
+       history of whoever cut the release. Keeping them in the repo makes them
+       reviewable in the diff and gives step 7 a stable file to point at.
+3. [ ] **Green CI on the branch** — `firmware.yml` (the only pre-tag compile
        check for the firmware) and `companion.yml` (unit tests) must be passing.
-3. [ ] **Merge the PR into `main`.** This fires `pages.yml`, which redeploys the
+4. [ ] **Merge the PR into `main`.** This fires `pages.yml`, which redeploys the
        setup page. (It does *not* build binaries — only the tag does.)
-4. [ ] **Create the release / tag.** The tag **must start with `v`** (e.g.
+5. [ ] **Create the release / tag.** The tag **must start with `v`** (e.g.
        `v1.0.0`) — `release.yml` only triggers on `v*`, so a tag like `1.4.0`
        silently builds nothing.
 
@@ -58,11 +63,17 @@ Fixed URLs the site depends on (resolve once a Release exists):
        *Re-pointing a tag* (only safe while no release has been published for
        it): `git tag -d v1.0.0 && git push origin :refs/tags/v1.0.0`, then
        re-create and push as above.
-5. [ ] **Watch `release.yml` go green** and confirm the Release has the three
+6. [ ] **Watch `release.yml` go green** and confirm the Release has the three
        `HeadroomCompanion-*` apps plus the firmware images
        (`headroom-mini-bootloader/partitions/boot_app0/app.bin` for the flasher,
        and `headroom-mini-merged.bin` for esptool users).
-6. [ ] **Smoke test the retail path** in Chrome/Edge:
+7. [ ] **Apply the notes.** `release.yml` publishes the release with an empty
+       body — `softprops/action-gh-release` is given files, not a body — so the
+       notes go on afterwards:
+       ```
+       gh release edit v1.0.0 --notes-file docs/release-notes/v1.0.0.md
+       ```
+8. [ ] **Smoke test the retail path** in Chrome/Edge:
        - Open `https://daveeuson.github.io/HeadroomMini/`, click **Connect &
          Install**, flash a board.
        - Same window → **Connect to Wi-Fi** (Improv) → board joins.
