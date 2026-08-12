@@ -6,14 +6,30 @@ name: Deploy setup page
 # cross-origin fetch from the Pages site is blocked -> "Failed to fetch").
 #
 # One-time repo setup: Settings -> Pages -> Source = "GitHub Actions".
-# Redeploys on docs changes and after every published release.
+#
+# This is the ONLY workflow that deploys Pages. release.yml used to deploy too,
+# with the firmware straight from its own build artifact, which meant two
+# deployers reading two different sources: a docs push during a release would
+# bundle the *previous* release's firmware (releases/latest lags until the
+# release is published) and land after the release's own deploy. The flasher
+# then installed the old version while the release page advertised the new one
+# -- silently, because both runs were green. v1.5.0 shipped that way.
+#
+# A release published by the Actions bot does not fire the `release` trigger
+# below (GITHUB_TOKEN events don't start workflows), which is why release.yml
+# owned this in the first place. `workflow_run` is the trigger that does fire,
+# and it runs after the release is published, so releases/latest is correct by
+# then.
 
 on:
   push:
     branches: [main]
     paths: ["docs/**", ".github/workflows/pages.yml"]
+  workflow_run:
+    workflows: ["Build companion binaries"]   # release.yml
+    types: [completed]
   release:
-    types: [published]
+    types: [published]                        # a human publishing via the UI
   workflow_dispatch: {}
 
 permissions:
@@ -21,12 +37,20 @@ permissions:
   pages: write
   id-token: write
 
+# Queue deploys instead of cancelling them. Cancelling made the winner depend on
+# who started last, which is the race described above; serialising means the
+# post-release deploy always lands after a concurrent docs deploy.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    # Skip a failed release build: its assets are absent or half-published, so
+    # there is nothing new worth bundling.
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -34,13 +58,58 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Bundle latest firmware images for the flasher (same-origin, no CORS)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           base="https://github.com/${{ github.repository }}/releases/latest/download"
+          # Record which release we are bundling, so the check below can tell
+          # whether it moved under us.
+          before=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName \
+                     --jq .tagName 2>/dev/null || echo "")
+          echo "bundling firmware from release: ${before:-<none>}"
+          missing=0
           for f in headroom-mini-bootloader.bin headroom-mini-partitions.bin \
                    headroom-mini-boot_app0.bin headroom-mini-app.bin; do
-            curl -fsSL -o "docs/firmware/$f" "$base/$f" \
-              || echo "::warning::missing $f in latest release (flasher Install 404s until a release with split images exists)"
+            curl -fsSL -o "docs/firmware/$f" "$base/$f" || {
+              echo "::warning::missing $f in latest release (flasher Install 404s until a release with split images exists)"
+              missing=1
+            }
           done
+          echo "BUNDLED_TAG=${before}" >> "$GITHUB_ENV"
+          echo "BUNDLE_INCOMPLETE=${missing}" >> "$GITHUB_ENV"
+      - name: Refuse to publish a flasher that lags the current release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BUNDLED_TAG}" ]; then
+            echo "No release exists yet — nothing to verify."; exit 0
+          fi
+          after=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          if [ "$after" != "${BUNDLED_TAG}" ]; then
+            # A release published while this job was downloading. Whatever is on
+            # disk is the previous version; deploying it is exactly the bug this
+            # guard exists to stop. The workflow_run deploy for that release will
+            # follow and publish the right thing.
+            echo "::error::releases/latest moved ${BUNDLED_TAG} -> ${after} mid-run; refusing to deploy stale firmware"
+            exit 1
+          fi
+          if [ "${BUNDLE_INCOMPLETE}" = "1" ]; then
+            echo "::warning::deploying with firmware images missing from $after"
+            exit 0
+          fi
+          # The flasher must install exactly what the release ships; a mismatch
+          # here is the silent failure that shipped with v1.5.0.
+          curl -fsSL -o /tmp/release-app.bin \
+            "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/headroom-mini-app.bin"
+          a=$(sha256sum docs/firmware/headroom-mini-app.bin | cut -d' ' -f1)
+          b=$(sha256sum /tmp/release-app.bin | cut -d' ' -f1)
+          if [ "$a" != "$b" ]; then
+            echo "::error::bundled app.bin does not match $after ($a != $b)"
+            exit 1
+          fi
+          echo "flasher matches $after ($a)"
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

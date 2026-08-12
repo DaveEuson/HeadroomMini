@@ -202,34 +202,15 @@ jobs:
           [ "$MISSING" -eq 0 ] || exit 1
           echo "All expected assets present on $TAG."
 
-  # Redeploy the browser flasher with THIS release's firmware. Done here in the
-  # same run (not via pages.yml's `release` trigger) because a release published
-  # by the Actions bot does not trigger other workflows — so pages.yml would
-  # never fire and the flasher would keep serving the previous version.
-  pages:
-    needs: [release]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    concurrency:
-      group: pages
-      cancel-in-progress: true
-    steps:
-      - uses: actions/checkout@v7
-      - name: Bundle this release's firmware into the flasher (same-origin)
-        uses: actions/download-artifact@v8
-        with:
-          name: firmware-images
-          path: docs/firmware
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: docs
-      - id: deployment
-        uses: actions/deploy-pages@v5
+  # No pages job here on purpose. This workflow used to redeploy the flasher
+  # itself, from its own build artifact, while pages.yml deployed the same site
+  # from releases/latest. Two deployers reading two different sources raced on
+  # every release: a docs push during a release bundles the *previous* firmware
+  # (releases/latest lags until the release is published) and can land last, so
+  # the flasher installs the old version while the release page advertises the
+  # new one. Both runs stay green. v1.5.0 shipped that way.
+  #
+  # pages.yml now owns Pages exclusively and picks this run up via `workflow_run`
+  # once it completes — after the release is published, so releases/latest is
+  # correct by then. That keeps the property this job existed for (a bot-created
+  # release cannot fire pages.yml's `release` trigger) without the second source.

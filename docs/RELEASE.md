@@ -11,7 +11,12 @@ GitHub Release; the setup page + companion download links always point at
 |---|---|---|
 | `firmware.yml` | push/PR touching `firmware/**` | compile-check + firmware artifacts (CI gate) |
 | `release.yml` | push tag `v*` | `HeadroomCompanion-{windows.exe,macos,linux}` + `headroom-mini-merged.bin` + the signed OTA `headroom-mini-app.bin.sig`, attached to the Release |
-| `pages.yml` | push to `main` touching `docs/**` | deploys the setup/flasher page to GitHub Pages |
+| `pages.yml` | push to `main` touching `docs/**`, **and after `release.yml` completes** | deploys the setup/flasher page to GitHub Pages, bundling `releases/latest`'s firmware same-origin |
+
+`pages.yml` is the only workflow that deploys Pages. It also refuses to publish
+a flasher whose firmware doesn't match the current release — v1.5.0 shipped with
+the page serving the previous version because two workflows deployed the site
+from two different sources and the stale one landed last, with both runs green.
 
 Fixed URLs the site depends on (resolve once a Release exists):
 - Flasher image: `https://github.com/DaveEuson/HeadroomMini/releases/latest/download/headroom-mini-merged.bin`
