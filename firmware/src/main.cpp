@@ -1323,6 +1323,12 @@ static void handleStatus() {
   JsonDocument doc;
   doc["app"] = "Headroom";        // discovery marker the companion looks for
   doc["mini"] = true;
+  // What this board is actually running. The release checklist asks you to
+  // confirm an OTA "reboots on the new version", and without this that can only
+  // be done by eye or by scraping /update — neither of which works for a board
+  // on a shelf, or for more than one at a time.
+  doc["version"] = FW_VERSION;
+  doc["self_hosted"] = selfHosted;
   doc["plan"] = plan[0] ? plan : (const char *)nullptr;
   JsonArray arr = doc["windows"].to<JsonArray>();
   for (int i = 0; i < nWindows; i++) {

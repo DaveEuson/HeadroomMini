@@ -86,7 +86,10 @@ Fixed URLs the site depends on (resolve once a Release exists):
        - `/alerts` → set an ntfy topic → **Send test alert** lands on a phone.
        - **OTA:** from a board on the previous release, open `/update` and
          confirm it installs the new signed image and reboots on the new
-         version (the signature is accepted).
+         version (the signature is accepted). Check the version without
+         standing over the board — and for more than one at a time — with
+         `curl -s http://<board-ip>:8080/api/status`, which reports `version`
+         and `self_hosted`.
 
 ## Release notes template
 
