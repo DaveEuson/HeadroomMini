@@ -6,9 +6,13 @@ name: Build firmware
 
 on:
   push:
-    # Tags are handled by release.yml, which builds the firmware itself —
-    # without this the two workflows both compile on every release tag.
-    tags-ignore: ["v*"]
+    # Filter on branches, not tags. A `push` block carrying only `tags-ignore`
+    # doesn't merely skip tags — GitHub treats a ref type you never mention as
+    # excluded, so branch pushes stopped triggering this workflow entirely and
+    # main went unbuilt from the day that filter was added. Naming branches
+    # keeps the original intent (tag pushes belong to release.yml, which builds
+    # the firmware itself) because a tag push is not a branch push.
+    branches: ["**"]
     paths: ["firmware/**", ".github/workflows/firmware.yml"]
   pull_request:
     paths: ["firmware/**", ".github/workflows/firmware.yml"]
