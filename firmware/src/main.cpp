@@ -1630,10 +1630,15 @@ static void improvSendResult(uint8_t cmd, const char *const *strs, uint8_t nstrs
   improvSend(improv::T_RPC_RESPONSE, d, (uint8_t)n);
 }
 
-// The device URL the browser should open once we're online.
+// The device URL the browser should open once we're online. The port is not
+// optional: :80 is the captive portal, which only exists in AP mode, so a URL
+// without the port sends every new arrival to a closed port on the board they
+// just set up — the flasher's "Visit Device" button is the first thing they
+// click after joining Wi-Fi.
 static void improvSendURL() {
   char url[48];
-  snprintf(url, sizeof(url), "http://%s", WiFi.localIP().toString().c_str());
+  snprintf(url, sizeof(url), "http://%s:%d",
+           WiFi.localIP().toString().c_str(), API_PORT);
   const char *urls[1] = {url};
   improvSendResult(improv::C_WIFI_SETTINGS, urls, 1);
 }
@@ -2720,8 +2725,12 @@ static void handleRoot() {
          "<p><a href=/connect>Open the manual connect page</a> &mdash; only if "
          "you can't run the companion.</p></details></div>"
          "<p class=muted style='text-align:center'>");
+  // Carry the port here too: this footer is what people copy down as "the
+  // board's address", and without it both forms land on the closed port 80.
   s += ip;
-  s += F(" &middot; headroom.local</p>"
+  s += ":";
+  s += API_PORT;
+  s += F(" &middot; headroom.local:8080</p>"
          "<p class=muted style='text-align:center;font-size:.78rem;margin:2px 0 8px'>"
          "Made by Dave Euson with <span style='color:#d97757'>&hearts;</span> "
          "in San Diego &middot; &copy; 2026 Dave Euson</p>"
