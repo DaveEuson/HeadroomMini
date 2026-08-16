@@ -15,6 +15,21 @@ Raspberry Pi, no Linux, no soldering.
 </p>
 <p align="center"><sub>Meters · live reset countdown · Sprocket — tap to cycle</sub></p>
 
+## Before you buy: you need Claude Code
+
+The board shows **Claude Code's** usage limits, and it gets them by reading
+Claude Code's own login — there's no API key to paste and no account to create.
+So it needs, on the computer you set it up from:
+
+- **Claude Code installed and signed in.** Claude Code comes with the paid
+  Claude plans (Pro and Max) and isn't part of the free tier — so a free
+  account leaves the board with no login to read.
+- **One pairing, once.** After that the board polls on its own over Wi-Fi and
+  the computer can be off — but the initial pairing hands it that login, so it
+  has to exist first.
+
+If `claude` runs on your machine and you're signed in, you're good.
+
 ## Buy the hardware
 
 Everything runs on the one ~$26 board — no Raspberry Pi, no soldering.

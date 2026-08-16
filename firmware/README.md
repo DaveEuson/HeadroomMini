@@ -19,6 +19,11 @@ paste the login at `http://<board-ip>:8080/connect`.) Use a **separate Claude
 login for the board** (a spare account), or it and your computer's Claude Code
 will keep rotating each other's refresh token and logging each other out.
 
+**Prerequisite:** Claude Code installed and signed in on the computer you pair
+from. Claude Code comes with the paid Claude plans (Pro and Max), not the free
+tier. The board has no API key and no account of its own; it reads Claude
+Code's login, so a free Claude account leaves it with nothing to read.
+
 ## Easiest: the browser flasher (no tools)
 
 For anyone who just wants it working — no VS Code, no PlatformIO, no git —
