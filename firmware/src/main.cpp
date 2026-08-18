@@ -725,6 +725,24 @@ static int headlineUtil() {
   return f < 0 ? -1 : (int)(f + 0.5f);
 }
 
+// The window with the least headroom left -- the one that actually stops you
+// working, and so the one the mascot reacts to. Deliberately separate from
+// headlineUtilF(), which prefers the 5-hour window because it feeds the history
+// graph: that has to stay on one series over time or the graph would jump every
+// time a different window became the fullest.
+static int tightestWindow() {
+  int idx = -1;
+  for (int i = 0; i < nWindows; i++)
+    if (idx < 0 || windows[i].utilization > windows[idx].utilization) idx = i;
+  return idx;
+}
+
+// % used of that window, or -1 with no data.
+static int mascotUtil() {
+  int i = tightestWindow();
+  return i < 0 ? -1 : (int)(windows[i].utilization + 0.5f);
+}
+
 // A window reads as "out" when its rounded percentage reaches 100% used — the
 // same rounding the meters print and the kitsune's "out of tokens" mood uses, so
 // the three can never disagree about whether you've run out.
@@ -806,7 +824,7 @@ static bool mascotActive() {
 // dead when out, panic when low, party while you're actively using it, asleep
 // when idle, and a waiting face before any data arrives.
 static int mascotMoodNow() {
-  int u = headlineUtil();
+  int u = mascotUtil();
   if (u < 0) return 4;                    // 4 = waiting
   int left = 100 - u;
   if (left <= 0)  return 5;               // 5 = dead / out
@@ -829,7 +847,7 @@ static void noteUsageActivity() {
 // the headline window's remaining share bucketed into three states -- the same
 // number the meters print, said in a way you can read from across a desk.
 static int kitsuneTails() {
-  int u = headlineUtil();                 // % used, -1 when there's no data yet
+  int u = mascotUtil();                   // % used, -1 when there's no data yet
   if (u < 0) return 2;                    // unknown: sit in the middle
   int left = 100 - u;
   return left > 60 ? 3 : left > 25 ? 2 : 1;
@@ -838,12 +856,28 @@ static int kitsuneTails() {
 // Draw the animated kitsune for `mood` at animation `frame`. Repaints only the
 // band above the caption, so the caption/version/badge are left intact and the
 // per-frame tick stays cheap. Each mood has its own motion.
+// The cell size, fitted to the glass. Scale the cell once and centre the grid:
+// mapping each of the ~200 fillRects individually would round each separately
+// and pull the pixel art out of alignment with itself.
+//
+// Fitted to the panel width rather than multiplied by uiScale, which is the
+// bitmap-font step. The two agreed while the sprite was 11 cells wide; at 18
+// they don't. 18 x 13 x uiScale 2 is 468px of sprite on a 410px AMOLED, which
+// centres to a negative x and clips both flanks, and pushes the stat line under
+// the caption off the bottom of the screen.
+// Both axes, because either can be the tight one: a tall panel runs out of
+// width first, a wide one runs out of height. The vertical budget is design-row
+// 40 (where the sprite starts) to 258 -- far enough up that the caption at +12
+// and the two stat lines below it still land on the glass.
+static int kitsuneCell() {
+  int byW = (scrW - mapX(6)) / K_COLS;    // 6px of breathing room, scaled
+  int byH = mapY(218) / K_ROWS;
+  int s = byW < byH ? byW : byH;
+  return s < 1 ? 1 : s;                   // identity (13) on the 240px panel
+}
+
 static void drawKitsuneAnim(int mood, int frame) {
-  // Scale the cell, then centre the grid. Mapping each of the ~200 fillRects
-  // below individually would round each one separately and pull the pixel art
-  // out of alignment with itself. 18 cells at S=13 is 234px, which is as wide
-  // as this can be and still clear the edges of a 240px panel.
-  const int S = K_CELL * uiScale, ox = (scrW - K_COLS * S) / 2, oy0 = mapY(40);
+  const int S = kitsuneCell(), ox = (scrW - K_COLS * S) / 2, oy0 = mapY(40);
 
   int bob = 0, shake = 0;
   if      (mood == 6) bob   = (frame % 4 < 2) ? -4 : 0;   // party: bounce
@@ -914,11 +948,14 @@ static void drawKitsuneAnim(int mood, int frame) {
     }
     gfx->fillRect(mx, my, 3 * S, S / 2, C_OUT);
     gfx->fillRect(mx + S, my + S / 5, S, S / 5, C_CRIT);           // tongue
+    // Design-space coords like everything else -- raw pixels here bunched the
+    // confetti into the top-left corner of a larger panel. The 200 keeps the
+    // lowest piece above the caption instead of clipping its top row.
     for (int i = 0; i < 9; i++) {
-      int cxp = 12 + (i * 71) % 214;
-      int cyp = 30 + ((i * 37 + frame * 12) % 216);
+      int cxp = mapX(12 + (i * 71) % 214);
+      int cyp = mapY(30 + ((i * 37 + frame * 12) % 200));
       uint16_t cc = (i % 3 == 0) ? C_ACC : (i % 3 == 1) ? C_WARN : C_SPRK;
-      gfx->fillRect(cxp, cyp, 5, 5, cc);
+      gfx->fillRect(cxp, cyp, mapX(5), mapY(5), cc);
     }
   } else if (mood == 2) {                          // PANIC: wide eyes + dripping sweat
     gfx->fillRect(lx, ey - S / 4, S, S + S / 4, C_FACE);
@@ -980,14 +1017,15 @@ static void drawMascot() {
                    : mood == 3 ? "resting - no usage" : "waiting for usage";
   // Caption sits under the sprite, so it follows the scaled cell size rather
   // than a design-space constant -- otherwise it overlaps on a larger panel.
-  const int S = K_CELL * uiScale;
+  const int S = kitsuneCell();
   int cy = (mapY(40) + K_ROWS * S + mapY(12)) * REF_H / scrH;  // back to design space
   drawCentered(word, cy, 2, mc);
 
-  // Stat line: the fullest window's %, plus its reset countdown.
-  int idx = -1;
-  for (int i = 0; i < nWindows; i++)
-    if (idx < 0 || windows[i].utilization > windows[idx].utilization) idx = i;
+  // Stat line: the same window the mascot is reacting to, plus its countdown.
+  // These used to be picked separately -- the mascot went by the 5-hour window
+  // and this line by the fullest -- so the screen could read "on a roll!" over
+  // three tails with "Weekly 96% used" printed directly beneath it.
+  int idx = tightestWindow();
   if (idx >= 0) {
     int u = (int)(windows[idx].utilization + 0.5f);
     int shown = showUsed ? u : 100 - u;

@@ -17,7 +17,7 @@ is the throttled one. (Same approach as the Sparko "Fuel" widget.)
 If it can't read credentials (Claude Code not logged in here), it falls back to
 estimating usage from Claude Code's local logs.
 
-Run it:  python3 companion.py --pi http://claudecounter.local:8080
+Run it:  python3 companion.py --pi http://yoyu.local:8080
 Standard library only, Python 3.8+.
 """
 
@@ -786,6 +786,14 @@ def uninstall_autostart():
         os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
                      "Start Menu", "Programs", "Startup",
                      "YoyuCompanion.bat"),
+        # The pre-rename name. install_autostart() writes the new one, so
+        # upgrading leaves this behind launching a second companion at every
+        # login -- harmless only because the instance lock kills it -- and
+        # --uninstall would never have removed it. The macOS and Linux unit
+        # names didn't change, so this is the only stale entry.
+        os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
+                     "Start Menu", "Programs", "Startup",
+                     "HeadroomCompanion.bat"),
         os.path.expanduser("~/Library/LaunchAgents/"
                            "com.claudetracker.companion.plist"),
         os.path.expanduser("~/.config/systemd/user/"
