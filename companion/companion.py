@@ -733,7 +733,7 @@ def install_autostart():
         startup = os.path.join(os.environ.get("APPDATA", ""), "Microsoft",
                                "Windows", "Start Menu", "Programs", "Startup")
         os.makedirs(startup, exist_ok=True)
-        target = os.path.join(startup, "YoyuCompanion.bat")
+        target = os.path.join(startup, _WIN_AUTOSTART_NAMES[0])
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(f'@echo off\r\nstart "" {cmd}\r\n')
         return target
@@ -780,25 +780,37 @@ WantedBy=default.target
     return target
 
 
+# Every Windows autostart filename this project has ever written. The product
+# has been renamed twice, install_autostart() only ever writes the current name,
+# and an entry it does not know about keeps launching a companion at every login
+# forever. Found in the wild: a machine still had ClaudeTrackerCompanion.bat from
+# two names ago, quietly starting the companion after --uninstall reported
+# success, because the previous fix for exactly this bug only went back one
+# generation. Append here, never replace.
+_WIN_AUTOSTART_NAMES = (
+    "YoyuCompanion.bat",              # current
+    "HeadroomCompanion.bat",          # Headroom Mini
+    "ClaudeTrackerCompanion.bat",     # the original
+)
+
+
+def _win_startup_dir():
+    return os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
+                        "Start Menu", "Programs", "Startup")
+
+
 def uninstall_autostart():
     removed = []
-    for p in (
-        os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
-                     "Start Menu", "Programs", "Startup",
-                     "YoyuCompanion.bat"),
-        # The pre-rename name. install_autostart() writes the new one, so
-        # upgrading leaves this behind launching a second companion at every
-        # login -- harmless only because the instance lock kills it -- and
-        # --uninstall would never have removed it. The macOS and Linux unit
-        # names didn't change, so this is the only stale entry.
-        os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
-                     "Start Menu", "Programs", "Startup",
-                     "HeadroomCompanion.bat"),
+    paths = [os.path.join(_win_startup_dir(), n) for n in _WIN_AUTOSTART_NAMES]
+    paths += [
+        # The macOS and Linux unit names never changed, so there is only ever
+        # one of each to remove.
         os.path.expanduser("~/Library/LaunchAgents/"
                            "com.claudetracker.companion.plist"),
         os.path.expanduser("~/.config/systemd/user/"
                            "claudetracker-companion.service"),
-    ):
+    ]
+    for p in paths:
         if os.path.isfile(p):
             try:
                 os.remove(p)
