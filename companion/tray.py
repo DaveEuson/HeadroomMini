@@ -56,39 +56,42 @@ COLORS = {"green": (94, 170, 100), "amber": (230, 164, 23),
           "red": (221, 77, 77), "grey": (140, 140, 140)}
 
 
-# Sprocket, the mascot — same 11x11 sprite the board draws. The two antenna
-# balls are tinted by state (green feeding / amber busy / red stuck) so the
-# tray icon shows status at a glance while still reading as the mascot.
-SPROCKET_SPRITE = ["...K...K...", "...B...B...", "..KKKKKKK..", ".KBBBBBBBK.",
-                   ".KWWWWWWWK.", ".KWWWWWWWK.", ".KWWWWWWWK.", ".KWWWWWWWK.",
-                   ".KBSBBBSBK.", ".KBBBBBBBK.", "..KK...KK.."]
+# The kitsune's head — the same cells the board draws, cropped to the head and
+# ruff. The full sprite carries a fan of tails that says how much headroom is
+# left, which is the board's job; a 64px tray icon has room for the animal or
+# the gauge, not both. The ear interiors are tinted by feed state (green
+# feeding / amber busy / red stuck) so the icon still reports status at a glance.
+KITSUNE_HEAD = [".K.......K.", ".KSK...KSK.", "KBSSK.KSSBK", "KBBBKKKBBBK",
+                "KBBBBBBBBBK", "KBBBBBBBBBK", ".KBBBBBBBK.", "..KBWWWBK..",
+                "...KWWWK...", ".KBBBBBBBK.", ".KBBWWWBBK.", ".KBBWWWBBK.",
+                "..KK...KK.."]
 _SPRK = {"K": (26, 24, 22), "W": (250, 247, 239),
-         "B": (95, 131, 161), "S": (63, 95, 122)}
+         "B": (201, 96, 63), "S": (158, 68, 41)}
 
 
 def make_icon(color):
-    """Draw Sprocket, tinted at the antennas by feed state."""
+    """Draw the kitsune, its ears tinted by feed state."""
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle([2, 2, 61, 61], radius=14, fill=(38, 38, 36, 255))
     status = COLORS.get(color, COLORS["grey"])
-    U = 5                       # cell size; 11*5=55, centred in 64
-    pad = (64 - 11 * U) // 2
+    U = 4                       # cell size; 11x13 cells centred in 64
+    padx, pady = (64 - 11 * U) // 2, (64 - 13 * U) // 2
 
     def cell(cx, cy, rgb):
-        x0, y0 = pad + cx * U, pad + cy * U
+        x0, y0 = padx + cx * U, pady + cy * U
         d.rectangle([x0, y0, x0 + U - 1, y0 + U - 1], fill=rgb)
 
-    for y, row in enumerate(SPROCKET_SPRITE):
+    for y, row in enumerate(KITSUNE_HEAD):
         for x, ch in enumerate(row):
             if ch in _SPRK:
                 cell(x, y, _SPRK[ch])
-    cell(3, 5, _SPRK["K"]); cell(7, 5, _SPRK["K"])            # eyes
-    cell(4, 7, _SPRK["K"]); cell(5, 7, _SPRK["K"]); cell(6, 7, _SPRK["K"])  # mouth
-    # antenna balls in the status colour, a touch larger so they read when small
-    for bx in (3, 7):
-        cx, cy = pad + bx * U + U // 2, pad + 1 * U + U // 2
-        d.ellipse([cx - U, cy - U, cx + U, cy + U], fill=status)
+    for x in (2, 8):                                          # ears, in status
+        cell(x, 1, status)
+    for x in (2, 7):                                          # slanted eyes
+        cell(x, 4, _SPRK["K"])
+    cell(5, 7, _SPRK["K"])                                    # nose
+    cell(4, 8, _SPRK["K"]); cell(6, 8, _SPRK["K"])            # mouth
     return img
 
 

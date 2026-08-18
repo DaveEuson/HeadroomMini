@@ -11,9 +11,9 @@ Raspberry Pi, no Linux, no soldering.
 <p align="center">
   <img src="docs/img/meters.jpg"   width="30%" alt="Meters — session and weekly usage bars">
   <img src="docs/img/timer.jpg"    width="30%" alt="Timer — live countdown to the next reset">
-  <img src="docs/img/sprocket.jpg" width="30%" alt="Sprocket — the mascot reacting to headroom">
+  <img src="docs/img/sprocket.jpg" width="30%" alt="the kitsune — the mascot reacting to headroom">
 </p>
-<p align="center"><sub>Meters · live reset countdown · Sprocket — tap to cycle</sub></p>
+<p align="center"><sub>Meters · live reset countdown · the kitsune — tap to cycle</sub></p>
 
 ## Before you buy: you need Claude Code
 

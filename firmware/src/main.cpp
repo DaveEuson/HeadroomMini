@@ -77,7 +77,7 @@ static Arduino_DataBus *bus =
 // rotation 2 = portrait 240x320 flipped 180° (USB-C connector at the top)
 static Arduino_GFX *gfx =
     new Arduino_ST7789(bus, LCD_RST, 2 /*rotation*/, true /*IPS*/, 240, 320);
-// Off-screen framebuffer (PSRAM) for the animated Sprocket screen: draw a whole
+// Off-screen framebuffer (PSRAM) for the animated kitsune screen: draw a whole
 // frame into RAM, then blit it in one pass so the animation never flickers.
 static Arduino_Canvas *mascotBuf = nullptr;
 
@@ -126,19 +126,57 @@ static const uint16_t C_WARN_T= RGB565(0x46, 0x3B, 0x1A);
 static const uint16_t C_CRIT  = RGB565(0xE0, 0x52, 0x52);
 static const uint16_t C_CRIT_T= RGB565(0x4A, 0x27, 0x27);
 
-// Sprocket, the mascot
-static const uint16_t C_SPRK  = RGB565(0x5F, 0x83, 0xA1);   // body
-static const uint16_t C_SPRK_D= RGB565(0x3F, 0x5F, 0x7A);   // shade
+// Yoyu, the kitsune
+static const uint16_t C_SPRK  = RGB565(0xC9, 0x60, 0x3F);   // fox fur
+static const uint16_t C_SPRK_D= RGB565(0x9E, 0x44, 0x29);   // ear + tail shade
 static const uint16_t C_OUT   = RGB565(0x1A, 0x18, 0x16);   // outline / features
 static const uint16_t C_FACE  = RGB565(0xFA, 0xF7, 0xEF);   // face screen
 
-// Sprocket's 11x11 pixel sprite, shared by the device screen and the web UI.
-// K=outline B=body W=face S=shade  '.'=transparent
-static const char *const SPROCKET_SPRITE[11] = {
-    "...K...K...",  "...B...B...",  "..KKKKKKK..",
-    ".KBBBBBBBK.",  ".KWWWWWWWK.",  ".KWWWWWWWK.",
-    ".KWWWWWWWK.",  ".KWWWWWWWK.",  ".KBSBBBSBK.",
-    ".KBBBBBBBK.",  "..KK...KK.."};
+static const int K_COLS = 18, K_ROWS = 15;
+static const int K_CELL = 13;   // px per cell at uiScale 1
+
+// The kitsune, drawn on a 18x15 cell grid shared by the device screen and
+// the web UI. K=outline B=fur W=markings S=shade  '.'=background
+static const char *const KITSUNE_SPRITE[15] = {
+    "..................", "..................", ".K.......K........",
+    ".KSK...KSK........", "KBSSK.KSSBK.......", "KBBBKKKBBBK.......",
+    "KBBBBBBBBBK.......", "KBBBBBBBBBK.......", ".KBBBBBBBK........",
+    "..KBWWWBK.........", "...KWWWK..........", ".KBBBBBBBK........",
+    ".KBBWWWBBK........", ".KBBWWWBBK........", "..KK...KK........."};
+
+// Tails are the gauge: one when headroom is nearly gone, three when there is
+// plenty. Each is a pre-rasterised arc leaving the same hip at its own angle,
+// with a ring of background cells around it -- two tails of the same colour
+// that touch read as one tail, which would make the count useless. Ordered
+// innermost first so drawing the first N gives a fan that opens outward.
+struct TailCell { uint8_t r, c; char ch; };
+static const TailCell TAIL_0[35] = {
+    {10,10,'.'},{10,11,'.'},{10,12,'.'},{10,13,'.'},{10,14,'.'},{11,15,'.'},
+    {11,16,'.'},{12,17,'.'},{13,17,'.'},{14,10,'.'},{14,11,'.'},{14,12,'.'},
+    {14,13,'.'},{14,14,'.'},{14,15,'.'},{14,16,'.'},{11,10,'S'},{11,11,'S'},
+    {11,12,'S'},{11,13,'S'},{11,14,'S'},{12,10,'S'},{12,11,'S'},{12,12,'S'},
+    {12,13,'S'},{12,14,'S'},{12,15,'W'},{12,16,'W'},{13,10,'S'},{13,11,'S'},
+    {13,12,'S'},{13,13,'S'},{13,14,'S'},{13,15,'W'},{13,16,'W'}};
+static const TailCell TAIL_1[48] = {
+    { 6,14,'.'},{ 6,15,'.'},{ 6,16,'.'},{ 7,12,'.'},{ 7,13,'.'},{ 7,17,'.'},
+    { 8,11,'.'},{ 8,17,'.'},{ 9, 9,'.'},{ 9,10,'.'},{ 9,17,'.'},{10, 8,'.'},
+    {10,15,'.'},{10,16,'.'},{11,14,'.'},{12,13,'.'},{13,12,'.'},{14,10,'.'},
+    {14,11,'.'},{ 7,14,'S'},{ 7,15,'W'},{ 7,16,'W'},{ 8,12,'S'},{ 8,13,'S'},
+    { 8,14,'S'},{ 8,15,'W'},{ 8,16,'W'},{ 9,11,'S'},{ 9,12,'S'},{ 9,13,'S'},
+    { 9,14,'S'},{ 9,15,'S'},{ 9,16,'W'},{10, 9,'S'},{10,10,'S'},{10,11,'S'},
+    {10,12,'S'},{10,13,'S'},{10,14,'S'},{11,10,'S'},{11,11,'S'},{11,12,'S'},
+    {11,13,'S'},{12,10,'S'},{12,11,'S'},{12,12,'S'},{13,10,'S'},{13,11,'S'}};
+static const TailCell TAIL_2[46] = {
+    { 1,13,'.'},{ 2,12,'.'},{ 2,14,'.'},{ 3,11,'.'},{ 3,15,'.'},{ 4,15,'.'},
+    { 5,14,'.'},{ 6,14,'.'},{ 7,13,'.'},{ 8,13,'.'},{ 9,12,'.'},{10,12,'.'},
+    {11,12,'.'},{12,12,'.'},{13,10,'.'},{13,11,'.'},{ 2,13,'W'},{ 3,12,'S'},
+    { 3,13,'W'},{ 3,14,'W'},{ 4,11,'S'},{ 4,12,'S'},{ 4,13,'W'},{ 4,14,'W'},
+    { 5,11,'S'},{ 5,12,'S'},{ 5,13,'S'},{ 6,11,'S'},{ 6,12,'S'},{ 6,13,'S'},
+    { 7,11,'S'},{ 7,12,'S'},{ 8,10,'S'},{ 8,11,'S'},{ 8,12,'S'},{ 9, 9,'S'},
+    { 9,10,'S'},{ 9,11,'S'},{10, 8,'S'},{10, 9,'S'},{10,10,'S'},{10,11,'S'},
+    {11,10,'S'},{11,11,'S'},{12,10,'S'},{12,11,'S'}};
+static const TailCell *const KITSUNE_TAILS[3] = {TAIL_0, TAIL_1, TAIL_2};
+static const uint8_t KITSUNE_TAIL_N[3] = {35, 48, 46};
 
 // ------------------------------------------------------------------- state
 
@@ -215,11 +253,11 @@ static char      tzEnv[48]   = "EST5EDT,M3.2.0,M11.1.0";  // POSIX TZ, set via /
 static bool      clock24     = false; // false = 12-hour (3:45 PM), true = 24-hour
 static bool      nightDim    = true;  // ease the backlight down overnight
 static const uint8_t NIGHT_LEVEL = 40;
-static int       uiScreen    = 0;     // 0 meters 1 focus 2 history 3 sprocket
+static int       uiScreen    = 0;     // 0 meters 1 focus 2 history 3 kitsune
                                       // 4 timer 5 actions 6 projects 7 settings
 static const int UI_SCREENS  = 8;
 static const char *SCREEN_NAMES[UI_SCREENS] =
-    {"Meters", "Focus", "History", "Sprocket",
+    {"Meters", "Focus", "History", "Yoyu",
      "Timer", "Actions", "Projects", "Settings"};
 static uint8_t   screenMask  = 0xFF;  // bit i set = screen i is in the rotation
 // screenMask is one bit per screen in a uint8_t, and it is also what gets
@@ -281,7 +319,7 @@ static unsigned long lastActionPollMs = 0;   // last time a companion asked
 static time_t    timerResetAt = 0;    // reset time the Timer screen is counting to
 static bool      timerOut     = false; // that window is spent — we're counting a wait
 static int       mascotShownMood = -2; // mood the caption/screen is currently drawn for
-static int       mascotFrame  = 0;    // animation frame counter (Sprocket screen)
+static int       mascotFrame  = 0;    // animation frame counter (kitsune screen)
 static unsigned long lastActivityMs = 0;  // last time usage went UP (you're using Claude)
 static float     prevHeadlineUtil = -1;   // float, so a fractional-% climb still counts
 static const unsigned long ACTIVE_WINDOW_MS = 20UL * 60 * 1000;  // "active" if used within 20 min
@@ -300,7 +338,7 @@ static int       histCount = 0;       // valid samples so far (<= HIST_LEN)
 static int       histHead  = 0;       // ring write index
 static const unsigned long SAMPLE_INTERVAL_MS = 10UL * 60UL * 1000UL;  // 10 min
 
-// 10pm-7am local (once NTP has synced). Shared by night-dim and Sprocket.
+// 10pm-7am local (once NTP has synced). Shared by night-dim and the kitsune.
 static bool nightNow() {
   time_t now = time(nullptr);
   if (!timeSynced || now < 100000) return false;
@@ -678,7 +716,7 @@ static int headlineUtil() {
 }
 
 // A window reads as "out" when its rounded percentage reaches 100% used — the
-// same rounding the meters print and Sprocket's "out of tokens" mood uses, so
+// same rounding the meters print and the kitsune's "out of tokens" mood uses, so
 // the three can never disagree about whether you've run out.
 static bool windowOut(const Window &w) {
   return (int)(w.utilization + 0.5f) >= 100;
@@ -749,7 +787,7 @@ static void drawHistory() {
   drawCentered(buf, gy + gh + 16, 2, C_INK);
 }
 
-// --- Sprocket's mood is driven by activity + headroom ---
+// --- the kitsune's mood is driven by activity + headroom ---
 // You're "active" if usage has climbed recently (you're burning tokens now).
 static bool mascotActive() {
   return lastActivityMs && (millis() - lastActivityMs) < ACTIVE_WINDOW_MS;
@@ -777,14 +815,25 @@ static void noteUsageActivity() {
   }
 }
 
-// Draw the animated Sprocket for `mood` at animation `frame`. Repaints only the
+// How many tails to show. The kitsune is a gauge, not decoration, so this is
+// the headline window's remaining share bucketed into three states -- the same
+// number the meters print, said in a way you can read from across a desk.
+static int kitsuneTails() {
+  int u = headlineUtil();                 // % used, -1 when there's no data yet
+  if (u < 0) return 2;                    // unknown: sit in the middle
+  int left = 100 - u;
+  return left > 60 ? 3 : left > 25 ? 2 : 1;
+}
+
+// Draw the animated kitsune for `mood` at animation `frame`. Repaints only the
 // band above the caption, so the caption/version/badge are left intact and the
 // per-frame tick stays cheap. Each mood has its own motion.
-static void drawSprocketAnim(int mood, int frame) {
-  // The sprite is 11x11 cells: scale the cell, then centre it. Mapping each
-  // of the ~30 fillRects below individually would round each one separately
-  // and pull the pixel art out of alignment with itself.
-  const int S = 18 * uiScale, ox = (scrW - 11 * S) / 2, oy0 = mapY(44);
+static void drawKitsuneAnim(int mood, int frame) {
+  // Scale the cell, then centre the grid. Mapping each of the ~200 fillRects
+  // below individually would round each one separately and pull the pixel art
+  // out of alignment with itself. 18 cells at S=13 is 234px, which is as wide
+  // as this can be and still clear the edges of a 240px panel.
+  const int S = K_CELL * uiScale, ox = (scrW - K_COLS * S) / 2, oy0 = mapY(40);
 
   int bob = 0, shake = 0;
   if      (mood == 6) bob   = (frame % 4 < 2) ? -4 : 0;   // party: bounce
@@ -793,14 +842,29 @@ static void drawSprocketAnim(int mood, int frame) {
   else if (mood == 5) bob   = 4;                          // dead: slumped
   int oy = oy0 + bob, px = ox + shake;
 
-  uint16_t mc   = (mood == 6) ? C_ACC : (mood == 2 || mood == 5) ? C_CRIT : C_MUTED;
-  uint16_t ball = (mood == 5 || mood == 3) ? C_MUTED : mc;
-  if (mood == 6) ball = (frame % 3 == 0) ? C_ACC : (frame % 3 == 1) ? C_WARN : C_SPRK;
+  // The ear interiors are the fox's own shade unless the mood is worth
+  // shouting about; a permanently tinted ear just reads as a sticker.
+  uint16_t ear = C_SPRK_D;
+  if      (mood == 2) ear = C_CRIT;
+  else if (mood == 5) ear = C_MUTED;
+  else if (mood == 6) ear = (frame % 3 == 0) ? C_ACC
+                          : (frame % 3 == 1) ? C_WARN : C_SPRK;
 
-  for (int y = 0; y < 11; y++)
-    for (int x = 0; x < 11; x++) {
+  // Tails first: the body is opaque and sits in front of where they root, so
+  // painting them under it hides the join instead of drawing a seam.
+  int tails = kitsuneTails();
+  for (int t = 0; t < tails; t++)
+    for (int i = 0; i < KITSUNE_TAIL_N[t]; i++) {
+      const TailCell &tc = KITSUNE_TAILS[t][i];
+      uint16_t c = tc.ch == 'K' ? C_OUT : tc.ch == 'W' ? C_FACE
+                 : tc.ch == 'S' ? C_SPRK_D : C_BG;
+      gfx->fillRect(px + tc.c * S, oy + tc.r * S, S, S, c);
+    }
+
+  for (int y = 0; y < K_ROWS; y++)
+    for (int x = 0; x < K_COLS; x++) {
       uint16_t c;
-      switch (SPROCKET_SPRITE[y][x]) {
+      switch (KITSUNE_SPRITE[y][x]) {
         case 'K': c = C_OUT;    break;
         case 'W': c = C_FACE;   break;
         case 'B': c = C_SPRK;   break;
@@ -809,27 +873,37 @@ static void drawSprocketAnim(int mood, int frame) {
       }
       gfx->fillRect(px + x * S, oy + y * S, S, S, c);
     }
-  gfx->fillRect(px + 3 * S, oy + S, S, S, ball);   // antenna balls
-  gfx->fillRect(px + 7 * S, oy + S, S, S, ball);
+  gfx->fillRect(px + 2 * S, oy + 3 * S, S, S, ear);
+  gfx->fillRect(px + 8 * S, oy + 3 * S, S, S, ear);
 
-  int ey = oy + 5 * S, lx = px + 3 * S, rx = px + 7 * S;
-  int my = oy + 7 * S, mx = px + 4 * S;
+  // Eyes on row 6, muzzle on row 9 (the white markings). Cols 2 and 7 put the
+  // pair either side of the head's centre line at col 5.
+  int ey = oy + 6 * S, lx = px + 2 * S, rx = px + 7 * S;
+  int my = oy + 9 * S + S / 2, mx = px + 4 * S;
+  if (mood != 5) gfx->fillRect(px + 5 * S, oy + 9 * S, S, S / 2, C_OUT);   // nose
 
   if (mood == 3) {                                 // ASLEEP: shut eyes + rising Zzz
     gfx->fillRect(lx, ey + S / 2, S, S / 4, C_OUT);
     gfx->fillRect(rx, ey + S / 2, S, S / 4, C_OUT);
-    gfx->fillRect(mx + S, my + S / 3, S, S / 3, C_OUT);
-    int n = 1 + (frame % 3);                       // z … z z … z z z …
+    gfx->fillRect(mx + S, my, S, S / 4, C_OUT);
+    int n = 1 + (frame % 3);                       // z .. z z .. z z z ..
     gfx->setTextColor(C_MUTED);
     gfx->setTextSize(uiScale);
-    for (int i = 0; i < n; i++) {
-      gfx->setCursor(px + 9 * S + i * 6, oy + S - i * 9);
+    for (int i = 0; i < n; i++) {                  // above the head: the space
+      gfx->setCursor(px + (4 + i) * S, oy + S - i * 9);   // beside it is tails
       gfx->print("z");
     }
-  } else if (mood == 6) {                          // PARTY: grin + falling confetti
-    gfx->fillRect(lx, ey, S, S, C_OUT);
-    gfx->fillRect(rx, ey, S, S, C_OUT);
-    gfx->fillRect(mx, my + S / 3, 3 * S, S / 2, C_OUT);
+  } else if (mood == 6) {                          // PARTY: happy arcs + open grin
+    // Curved-up eyes, not blocks. A square eye over a wide mouth reads as a
+    // stare rather than a smile, which is how the previous grin went wrong.
+    for (int e = 0; e < 2; e++) {
+      int bx = e ? rx : lx;
+      gfx->fillRect(bx,             ey + S / 2, S / 3, S / 4, C_OUT);
+      gfx->fillRect(bx + S / 3,     ey + S / 5, S / 3, S / 4, C_OUT);
+      gfx->fillRect(bx + 2 * S / 3, ey + S / 2, S / 3, S / 4, C_OUT);
+    }
+    gfx->fillRect(mx, my, 3 * S, S / 2, C_OUT);
+    gfx->fillRect(mx + S, my + S / 5, S, S / 5, C_CRIT);           // tongue
     for (int i = 0; i < 9; i++) {
       int cxp = 12 + (i * 71) % 214;
       int cyp = 30 + ((i * 37 + frame * 12) % 216);
@@ -841,9 +915,10 @@ static void drawSprocketAnim(int mood, int frame) {
     gfx->fillRect(rx, ey - S / 4, S, S + S / 4, C_FACE);
     gfx->fillRect(lx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
     gfx->fillRect(rx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
-    gfx->fillRect(mx + S, my, S, S, C_OUT);
+    gfx->fillRect(mx + S, my - S / 4, S, S / 2, C_OUT);
     int dy = (frame % 4) * 7;
-    gfx->fillRect(rx + S + S / 4, ey - S / 3 + dy, S / 3, S / 2, C_SPRK);
+    // Sweat has to stay pale: on a red fox a coloured droplet reads as blood.
+    gfx->fillRect(rx + S + S / 4, ey - S / 3 + dy, S / 3, S / 2, C_FACE);
   } else if (mood == 5) {                          // DEAD: X eyes, KO mouth (still)
     for (int t = -1; t <= 1; t++) {
       gfx->drawLine(lx, ey + t, lx + S - 1, ey + S - 1 + t, C_OUT);
@@ -851,15 +926,20 @@ static void drawSprocketAnim(int mood, int frame) {
       gfx->drawLine(rx, ey + t, rx + S - 1, ey + S - 1 + t, C_OUT);
       gfx->drawLine(rx + S - 1, ey + t, rx, ey + S - 1 + t, C_OUT);
     }
-    gfx->fillRect(mx + S / 2, my + S / 2, 2 * S, S / 5, C_OUT);
-  } else {                                         // WAITING: open eyes, flat mouth
-    gfx->fillRect(lx, ey, S, S, C_OUT);
-    gfx->fillRect(rx, ey, S, S, C_OUT);
-    gfx->fillRect(mx, my + S / 2, 3 * S, S / 5, C_OUT);
+    gfx->fillRect(mx + S / 2, my, 2 * S, S / 5, C_OUT);
+  } else {                                         // WAITING: narrow fox eyes
+    // Stepped, not square: the slant is most of what separates a fox from a
+    // round-eyed cartoon animal at this size, and it costs two rects an eye.
+    for (int e = 0; e < 2; e++) {
+      int bx = e ? rx : lx, d = e ? -1 : 1;
+      gfx->fillRect(bx, ey + S / 3, 2 * S / 3, S / 3, C_OUT);
+      gfx->fillRect(bx + (d > 0 ? S / 2 : -S / 6), ey + S / 8, 2 * S / 3, S / 3, C_OUT);
+    }
+    gfx->fillRect(mx + S / 2, my, 2 * S, S / 5, C_OUT);
   }
 }
 
-// Full Sprocket screen, rendered into the off-screen buffer and blitted in one
+// Full kitsune screen, rendered into the off-screen buffer and blitted in one
 // pass (no flicker). Draw helpers all use the global `gfx`, so we point it at
 // the RAM canvas for the duration, then flush. Every animation frame is a full
 // redraw of this whole screen into the buffer.
@@ -890,8 +970,8 @@ static void drawMascot() {
                    : mood == 3 ? "resting - no usage" : "waiting for usage";
   // Caption sits under the sprite, so it follows the scaled cell size rather
   // than a design-space constant -- otherwise it overlaps on a larger panel.
-  const int S = 18 * uiScale;
-  int cy = (mapY(44) + 11 * S + mapY(14)) * REF_H / scrH;   // back to design space
+  const int S = K_CELL * uiScale;
+  int cy = (mapY(40) + K_ROWS * S + mapY(12)) * REF_H / scrH;  // back to design space
   drawCentered(word, cy, 2, mc);
 
   // Stat line: the fullest window's %, plus its reset countdown.
@@ -908,7 +988,7 @@ static void drawMascot() {
     fmtCountdown(windows[idx].resets_at, buf, sizeof(buf));
     if (buf[0]) drawCentered(buf, cy + 42, 1, C_MUTED);
   }
-  drawSprocketAnim(mood, mascotFrame);
+  drawKitsuneAnim(mood, mascotFrame);
 
   if (mascotBuf) { gfx = real; mascotBuf->flush(); }   // blit the finished frame
 }
@@ -2651,20 +2731,40 @@ static void handleSettingsSave() {
 }
 
 // Styled landing page: status + how to feed it (companion / pair), links.
-// Sprocket as inline SVG for the web UI, from the same sprite the screen draws.
-static String sprocketSvg(int px) {
-  String s = "<svg width="; s += px; s += " height="; s += px;
-  s += " viewBox='0 0 11 11' shape-rendering=crispEdges style='display:block'>";
-  const char *fill;
-  for (int y = 0; y < 11; y++)
-    for (int x = 0; x < 11; x++) {
-      switch (SPROCKET_SPRITE[y][x]) {
-        case 'K': fill = "#1A1816"; break;
-        case 'B': fill = "#5F83A1"; break;
-        case 'W': fill = "#FAF7EF"; break;
-        case 'S': fill = "#3F5F7A"; break;
-        default:  continue;
-      }
+// The kitsune as inline SVG for the web UI, from the same sprite the screen
+// draws -- including the live tail count, so the page and the panel never
+// disagree about how much headroom is left.
+static const char *kitsuneFill(char ch) {
+  switch (ch) {
+    case 'K': return "#1A1816";
+    case 'B': return "#C9603F";
+    case 'W': return "#FAF7EF";
+    case 'S': return "#9E4429";
+  }
+  return nullptr;
+}
+
+static String kitsuneSvg(int px) {
+  // Compose onto a scratch grid rather than emitting the sprite and then the
+  // tails: the tails carry background cells that punch the gaps between them,
+  // and a background <rect> over a transparent page would show as a dark patch.
+  char grid[K_ROWS][K_COLS];
+  memset(grid, '.', sizeof(grid));
+  int tails = kitsuneTails();
+  for (int t = 0; t < tails; t++)
+    for (int i = 0; i < KITSUNE_TAIL_N[t]; i++) {
+      const TailCell &tc = KITSUNE_TAILS[t][i];
+      grid[tc.r][tc.c] = tc.ch;
+    }
+  for (int y = 0; y < K_ROWS; y++)
+    for (int x = 0; x < K_COLS; x++)
+      if (KITSUNE_SPRITE[y][x] != '.') grid[y][x] = KITSUNE_SPRITE[y][x];
+  String s = "<svg width="; s += px; s += " height="; s += (px * K_ROWS) / K_COLS;
+  s += " viewBox='0 0 18 15' shape-rendering=crispEdges style='display:block'>";
+  for (int y = 0; y < K_ROWS; y++)
+    for (int x = 0; x < K_COLS; x++) {
+      const char *fill = kitsuneFill(grid[y][x]);
+      if (!fill) continue;
       s += "<rect x="; s += x; s += " y="; s += y;
       s += " width=1 height=1 fill='"; s += fill; s += "'/>";
     }
@@ -2694,7 +2794,7 @@ static void handleRoot() {
       ".ava{background:#262624;border-radius:12px;padding:7px;flex:none}</style></head><body>"
       "<div class=card style='display:flex;align-items:center;gap:14px'>"
       "<div class=ava>");
-  s += sprocketSvg(52);
+  s += kitsuneSvg(52);
   s += F("</div><div><h1 style='margin:0 0 5px'>Yoyu</h1><span class=pill>");
   s += st;
   s += F("</span></div></div><div class=card><h3>See your Claude usage</h3><ol>"
@@ -3100,7 +3200,7 @@ void loop() {
   static bool pairShown = false;
   if (pairingActive()) pairShown = true;
   else if (pairShown) { pairShown = false; if (!screenOff) drawScreen(); }
-  // Sprocket animates while his screen is up: advance a frame and redraw the
+  // The kitsune animates while its screen is up: advance a frame and redraw the
   // whole screen into the off-screen buffer (drawMascot blits it in one pass,
   // so there's no flicker).
   static unsigned long lastAnim = 0;

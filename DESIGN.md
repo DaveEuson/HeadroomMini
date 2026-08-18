@@ -23,10 +23,10 @@ colors:
   crimson: "#e05252"
   crimson-track: "#4a2727"
   error-text: "#b4442a"
-  sprocket-body: "#5f83a1"
-  sprocket-shade: "#3f5f7a"
-  sprocket-outline: "#1a1816"
-  sprocket-face: "#faf7ef"
+  kitsune-fur: "#c9603f"
+  kitsune-shade: "#9e4429"
+  kitsune-outline: "#1a1816"
+  kitsune-markings: "#faf7ef"
 typography:
   display:
     fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
@@ -195,7 +195,7 @@ and styled no louder than the sentence around it.
 - Flat by default — 1px borders do the separating; one shadow in the system marks the one action that matters.
 - Generous and unfussy: 44px hit-target floor, soft 10–16px corners, no ornament.
 - A three-tier state ladder (terracotta → amber → crimson) that never rides on hue alone.
-- Sprocket, a 11×11 pixel-art mascot, is the only illustration the system owns.
+- The kitsune, an 18×15 pixel-art mascot, is the only illustration the system owns.
 
 ## Colors
 
@@ -226,10 +226,10 @@ or lit.
 - **Hairline** (`rgba(61,57,41,.14)`): the separator that does the work shadows would otherwise do.
 - **Panel Ground** (`#262624`) / **Panel Ink** (`#f5f4ef`) / **Panel Muted** (`#94907e`): the inverted set, for the LCD only.
 
-### Sprocket
+### The kitsune
 The mascot's four fixed colors, shared byte-for-byte between the inline SVG on the
-setup page and the sprite drawn on the board: **Body** (`#5f83a1`),
-**Shade** (`#3f5f7a`), **Outline** (`#1a1816`), **Face** (`#faf7ef`).
+setup page and the sprite drawn on the board: **Fur** (`#c9603f`),
+**Shade** (`#9e4429`), **Outline** (`#1a1816`), **Markings** (`#faf7ef`).
 
 ### Named Rules
 
@@ -388,13 +388,20 @@ The product's core object, on the panel and conceptually everywhere.
 - Tier by remaining headroom: >30% terracotta on `#4a382f`, ≤30% amber on `#463b1a`, ≤10% crimson on `#4a2727`.
 - The tier is carried by **three** signals at once — fill color, fill length, and the literal percentage in ×2 type — so hue is never the sole carrier.
 
-### Sprocket (signature component)
-An 11×11 pixel-art mascot rendered from a shared four-color sprite map: as inline
-SVG at 72px on the setup page (`shape-rendering: crispEdges`), as an animated
+### The kitsune (signature component)
+An 18×15 pixel-art mascot rendered from a shared four-color sprite map: as inline
+SVG at 86px on the setup page (`shape-rendering: crispEdges`), as an animated
 buffered screen on the panel, and as a small avatar on the board's own pages
 against a `#262624` chip that reproduces the panel polarity in miniature. It
-reacts to remaining headroom and to overnight dimming — Sprocket is state, not
+reacts to remaining headroom and to overnight dimming — the kitsune is state, not
 decoration.
+
+**The tails are a gauge, not decoration.** A kitsune gains tails as it gains
+power, so the mascot carries the same number the meters print: three tails above
+60% headroom, two down to 25%, one below that. Tails are drawn with a ring of
+background cells around each, because two same-colored tails that touch read as
+one and the count — the entire point — stops being legible. The tray icon shows
+the head only: 64px has room for the animal or the gauge, not both.
 
 ## Do's and Don'ts
 
@@ -416,5 +423,5 @@ decoration.
 - **Don't** add monetization pressure of any kind: no urgency, no email capture, no pricing tiers, no "Pro" gating. The software is free and MIT; the one affiliate link stays disclosed in place and no louder than its surrounding sentence.
 - **Don't** let a meter render at zero width. Clamp the fill to 8px.
 - **Don't** compress overflow on the panel. Three windows, then "+N more".
-- **Don't** invent a second mascot or restyle Sprocket. Its four colors are shared byte-for-byte between the SVG and the firmware sprite.
+- **Don't** invent a second mascot or restyle the kitsune. Its four colors are shared byte-for-byte between the SVG and the firmware sprite, and its tail count is bound to headroom — changing either breaks a reading, not just a look.
 - **Don't** use terracotta for a focus ring on a terracotta fill — that ring stays ink.

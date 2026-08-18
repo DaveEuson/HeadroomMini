@@ -90,7 +90,7 @@ https://www.printables.com/model/1188149-enclosure-for-esp32-s3-touch-lcd-2
 - **v0 (this)** — screen + Wi-Fi + companion-fed meters. Bring-up day.
 - **Phase 1.5 — touch & motion (done).** CST816D capacitive touch + QMI8658
   IMU on the shared I2C bus (SDA 48 / SCL 47):
-  - **Tap / swipe L-R** → cycle screens (meters → focus → history → Sprocket
+  - **Tap / swipe L-R** → cycle screens (meters → focus → history → Yoyu
     → Timer → Actions → Projects → Settings)
   - **Long-press** → toggle % left / % used (saved)
   - **Swipe up / down** → brightness
@@ -110,9 +110,10 @@ https://www.printables.com/model/1188149-enclosure-for-esp32-s3-touch-lcd-2
   voltage (no charge-status line on this board).
 - **Phase 4 — countdown & moods (done).** A **Timer** screen showing a live,
   second-by-second `H:MM:SS` countdown to your soonest reset (colored amber
-  under 30 min, red under 5). Sprocket now reacts to how dire things are —
-  a **panic** face (wide eyes, sweat, gasp) under 15% headroom and a **KO**
-  face (X eyes, dimmed antenna) at zero.
+  under 30 min, red under 5). The kitsune reacts to how dire things are — a
+  **panic** face (wide eyes, sweat, gasp) under 15% headroom and a **KO** face
+  (X eyes, dimmed ears) at zero — and its **tails count your headroom**: three
+  above 60% left, two down to 25%, one below that.
 - **Phase 5 — hardening (planned, needs hardware).** TLS cert verification
   (embed a CA bundle, drop `setInsecure`) and IMU-driven auto-rotate
   (mounting-dependent, so it needs calibrating on a real board). Both require
@@ -123,7 +124,7 @@ https://www.printables.com/model/1188149-enclosure-for-esp32-s3-touch-lcd-2
 - `http://<board-ip>:8080/settings` configures the clock timezone (defaults to
   US Eastern; countdowns are timezone-independent), 12/24-hour format, overnight
   dimming, **which screens are in the tap rotation** (meters / focus / history /
-  Sprocket / Timer / Actions / Projects / Settings), the **default screen** shown
+  Yoyu / Timer / Actions / Projects / Settings), the **default screen** shown
   at power-on, and optional **auto-rotate** (cycle the enabled screens every
   10-60 s; tapping pauses it).
 - Don't know the address? **Tap through to the Settings screen** — it's last in

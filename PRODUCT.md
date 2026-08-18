@@ -104,7 +104,7 @@ The environment is assumed to be a trusted home or office network.
 - `README.md`, `docs/TROUBLESHOOTING.md`, `docs/HARDENING.md` — the reading
   experience for evaluation and debugging.
 
-**Device UI:** eight screens — Meters, Focus, History, Sprocket, Timer, Actions,
+**Device UI:** eight screens — Meters, Focus, History, Yoyu, Timer, Actions,
 Projects, Settings — cycled by tap, each individually enable-able via a screen
 mask. Meters cover
 every usage window Claude reports (5-hour session, weekly, weekly Opus…) in
@@ -176,10 +176,11 @@ polls the same account; charge-only USB-C cables; unsupported browsers.
 
 - **Name:** Yoyu. Sibling project: YoyuZero (the Raspberry Pi
   version, mascot "Pip").
-- **Sprocket** — the mascot, a pixel-art character with its own device screen
-  who reacts to remaining headroom. Present as an inline pixel SVG on the setup
-  page and as an animated screen on the board. Sprocket is an established asset,
-  not a decoration to be swapped out.
+- **The kitsune** — the mascot, a pixel-art fox with its own device screen who
+  reacts to remaining headroom, and whose tails count it: three when there is
+  room to spare, one when there is almost none. Present as an inline pixel SVG
+  on the setup page and as an animated screen on the board. It is an established
+  asset, not a decoration to be swapped out.
 - **Voice:** plain, concrete, reassuring about difficulty — "No terminal, no
   menubar, no estimating," "no VS Code, no command line," "you'll only do this
   once." It names costs honestly (charge-only cables, unsupported browsers,
