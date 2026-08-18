@@ -31,7 +31,7 @@ conflict.
 
 ## Product Purpose
 
-Headroom Mini is a physical desk gadget that displays Claude usage limits at a
+Yoyu is a physical desk gadget that displays Claude usage limits at a
 glance: how much of each window is left, when it resets, and a phone alert when
 a window crosses a threshold.
 
@@ -53,7 +53,7 @@ Supporting position: it runs entirely on one ~$26 Waveshare
 ESP32-S3-Touch-LCD-2 — no Raspberry Pi, no Linux, no soldering — and installs
 from a browser page with no VS Code and no command line. A deluxe Raspberry Pi
 Zero 2 W variant with a full web dashboard and the "Pip" mascot lives in a
-separate repo (HeadroomZero); this repo is the self-contained ESP32 appliance.
+separate repo (YoyuZero); this repo is the self-contained ESP32 appliance.
 
 ## Operating Context
 
@@ -61,12 +61,12 @@ The setup chain, in the order a buyer meets it:
 
 1. **Buy** the Waveshare ESP32-S3-Touch-LCD-2 (Amazon affiliate link or direct
    from Waveshare).
-2. **Flash** at `https://daveeuson.github.io/HeadroomMini/` (`docs/index.html`)
+2. **Flash** at `https://daveeuson.github.io/Yoyu/` (`docs/index.html`)
    in Chrome or Edge on a computer, over a data USB-C cable. Phones, Safari and
    Firefox cannot flash — a real and recurring failure point.
 3. **Wi-Fi** is handed to the board over the same USB cable via Improv, in the
-   same browser window. Fallback: the board's own `Headroom-Setup` hotspot
-   (password `headroom`) at `http://192.168.4.1`, used from a phone.
+   same browser window. Fallback: the board's own `Yoyu-Setup` hotspot
+   (password `yoyu`) at `http://192.168.4.1`, used from a phone.
 4. **Feed it usage** one of two ways:
    - *Push mode (default):* download and run the companion on the computer
      where Claude Code is used; it auto-discovers the board and pushes usage.
@@ -169,12 +169,12 @@ a one-time code shown on the physical screen before a login is handed over.
 **Known recurring failure modes** users hit, all of which have a UI cost:
 "Login expired – re-pair" when the board and computer share a Claude account
 and rotate each other's token; "couldn't reach the board" / 404 when two
-devices answer to `headroom.local`; rate limiting when more than one device
+devices answer to `yoyu.local`; rate limiting when more than one device
 polls the same account; charge-only USB-C cables; unsupported browsers.
 
 ## Brand Commitments
 
-- **Name:** Headroom Mini. Sibling project: HeadroomZero (the Raspberry Pi
+- **Name:** Yoyu. Sibling project: YoyuZero (the Raspberry Pi
   version, mascot "Pip").
 - **Sprocket** — the mascot, a pixel-art character with its own device screen
   who reacts to remaining headroom. Present as an inline pixel SVG on the setup
@@ -213,7 +213,7 @@ the only price is the ~$26 third-party board. Do not invent social proof.
    or a shell open, and should never be required to. Developer paths are
    available but never on the critical path.
 3. **Name the failure before it happens.** Charge-only cables, unsupported
-   browsers, shared-account token rotation, duplicate `headroom.local` — these
+   browsers, shared-account token rotation, duplicate `yoyu.local` — these
    are known and predictable. Surfaces should pre-empt them in place, not bury
    them in a troubleshooting doc.
 4. **Real numbers, or say so.** The product's whole claim is that these are the

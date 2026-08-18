@@ -1,6 +1,6 @@
 name: Build firmware
 
-# Compile-checks the Headroom Mini firmware (ESP32-S3) on every change to
+# Compile-checks the Yoyu firmware (ESP32-S3) on every change to
 # firmware/, and attaches the built firmware.bin as an artifact so a release
 # can eventually ship ready-to-flash binaries.
 

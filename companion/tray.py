@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Headroom tray — the companion as a menubar / system-tray app.
+"""Yoyu tray — the companion as a menubar / system-tray app.
 
 Sits quietly in your menubar (macOS) or system tray (Windows/Linux): it finds
-your Headroom board, feeds it your Claude usage, and gives you one-click
+your Yoyu board, feeds it your Claude usage, and gives you one-click
 **Pair** (make the board self-contained) and **Open board page**. The icon's
 colour tells you at a glance whether it's feeding (green), searching (amber), or
 stuck (red).
@@ -168,7 +168,7 @@ def _ask_pair_code():
         root.attributes("-topmost", True)
         code = simpledialog.askstring(
             "Pair board",
-            "Look at your Headroom board — it's showing a 6-character code.\n"
+            "Look at your Yoyu board — it's showing a 6-character code.\n"
             "Enter it here to finish pairing:")
         root.destroy()
         return code or ""
@@ -264,7 +264,7 @@ def main():
     if pinned:
         state["url"] = pinned
         state["fixed"] = True
-    icon = pystray.Icon("Headroom", make_icon("amber"), "Headroom", build_menu())
+    icon = pystray.Icon("Yoyu", make_icon("amber"), "Yoyu", build_menu())
     threading.Thread(target=worker, args=(icon,), daemon=True).start()
     icon.run()   # blocks on the main thread (required on macOS)
 

@@ -64,12 +64,12 @@ reaches *this* board's `/api/pair/start`.
 
 ## "Couldn't reach the board … HTTP Error 404"
 
-**What it means:** the companion found *a* device at `headroom.local`, but it
+**What it means:** the companion found *a* device at `yoyu.local`, but it
 wasn't your ESP32 board — so the pairing endpoint didn't exist there.
 
 **The usual cause: two devices answering to the same name.** If you also run the
 older **Raspberry Pi ClaudeTracker**, both it and the ESP32 Mini advertise
-themselves as `headroom.local`. Your computer resolves whichever answers first,
+themselves as `yoyu.local`. Your computer resolves whichever answers first,
 and if the Pi wins, you get a 404 (it has no pairing endpoint) — and both
 devices polling the same Claude account will also **rate-limit** you.
 
@@ -81,9 +81,9 @@ devices polling the same Claude account will also **rate-limit** you.
    python companion.py --pi http://<board-ip>:8080 --pair
    ```
    Find the board's IP from your router's device list. To see which device
-   `headroom.local` currently resolves to:
+   `yoyu.local` currently resolves to:
    ```
-   ping headroom.local
+   ping yoyu.local
    ```
 
 ---
@@ -104,7 +104,7 @@ companion. Your own heavy Claude use can contribute too.
 
 ---
 
-## "Another Headroom companion is already running"
+## "Another Yoyu companion is already running"
 
 **What it means:** a companion process is already running on this computer
 (often one that started with Windows/macOS login). Only one should run, so the
@@ -133,7 +133,7 @@ new one exits to avoid double-polling.
 1. The board and computer are on the **same Wi-Fi** (not a guest network / VPN).
 2. The board's screen shows usage or a status screen — not the **"Set me up"**
    Wi-Fi setup screen. If it's in setup mode, reconnect it to Wi-Fi (open the
-   setup page and use "Connect to Wi-Fi", or join `Headroom-Setup` and pick your
+   setup page and use "Connect to Wi-Fi", or join `Yoyu-Setup` and pick your
    network).
 3. Still nothing? Point the companion straight at the board:
    ```
@@ -188,5 +188,5 @@ The board is on Wi-Fi but hasn't received usage yet.
 ---
 
 Still stuck? Open an issue at
-<https://github.com/DaveEuson/HeadroomMini/issues> with what the board's screen
+<https://github.com/DaveEuson/Yoyu/issues> with what the board's screen
 shows and what the companion prints.

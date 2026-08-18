@@ -1,5 +1,5 @@
 ---
-name: Headroom Mini
+name: Yoyu
 description: One warm palette in two polarities — cream paper for setup, a lit panel for the desk.
 colors:
   paper: "#f0eee6"
@@ -160,7 +160,7 @@ components:
     height: "14px"
 ---
 
-# Design System: Headroom Mini
+# Design System: Yoyu
 
 ## Overview
 

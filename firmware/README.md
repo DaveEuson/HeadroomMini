@@ -1,12 +1,12 @@
-# Headroom Mini — ESP32-S3 firmware
+# Yoyu — ESP32-S3 firmware
 
-Headroom on a **Waveshare ESP32-S3-Touch-LCD-2** (2" ST7789 240×320 IPS,
+Yoyu on a **Waveshare ESP32-S3-Touch-LCD-2** (2" ST7789 240×320 IPS,
 ESP32-S3R8, battery header). ~$26, no Raspberry Pi, no Linux.
 
 **v0 scope:** the board joins your Wi-Fi (first boot: its own
-`Headroom-Setup` hotspot with a phone setup page, same flow as the Pi), then
+`Yoyu-Setup` hotspot with a phone setup page, same flow as the Pi), then
 speaks the **same HTTP API as the Pi tracker** — `GET /api/status` with the
-`"app": "Headroom"` discovery marker and `POST /api/push` — so the existing
+`"app": "Yoyu"` discovery marker and `POST /api/push` — so the existing
 desktop **companion feeds it unchanged**. Claude-night-theme meters, reset
 countdowns, NTP clock.
 
@@ -30,7 +30,7 @@ For anyone who just wants it working — no VS Code, no PlatformIO, no git —
 open the setup page in **Chrome or Edge on a computer** and click
 **Connect & Install**:
 
-> **https://daveeuson.github.io/HeadroomMini/**
+> **https://daveeuson.github.io/Yoyu/**
 
 It flashes the latest release straight from the browser, then walks through
 Wi-Fi and the companion download. That page is `docs/index.html` here (served
@@ -52,8 +52,8 @@ release builds. The developer flow below is only needed to change the firmware.
    If the upload can't find the port, hold **BOOT**, tap **RESET**, release
    BOOT, retry (classic ESP32 bootloader dance).
 
-4. On the screen: join the `Headroom-Setup` Wi-Fi from your phone
-   (password `headroom`), open `http://192.168.4.1`, then **pick your home
+4. On the screen: join the `Yoyu-Setup` Wi-Fi from your phone
+   (password `yoyu`), open `http://192.168.4.1`, then **pick your home
    network from the scanned list** and type its password (or type the name by
    hand if it's hidden). The board reboots and shows its address.
 5. Feed it from your computer:
@@ -63,7 +63,7 @@ release builds. The developer flow below is only needed to change the firmware.
    ```
 
    (`--no-install` so it doesn't fight your Pi tracker's autostart; drop the
-   flag if this becomes your only tracker. `headroom.local` also works if
+   flag if this becomes your only tracker. `yoyu.local` also works if
    your OS resolves mDNS.)
 
 Within a couple of minutes the meters go live.

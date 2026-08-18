@@ -1,4 +1,4 @@
-# Headroom companion
+# Yoyu companion
 
 Runs on the **computer where you use Claude Code** and feeds your usage to the
 board.
@@ -46,9 +46,9 @@ usage from Claude Code's local logs (`~/.claude/projects`).
 
 Open `http://<tracker-address>:8080` (the address is shown on the tracker's
 screen) — or go straight to the [latest release] — and download
-**HeadroomCompanion** for your OS. Double-click it. Done.
+**YoyuCompanion** for your OS. Double-click it. Done.
 
-[latest release]: https://github.com/DaveEuson/HeadroomMini/releases/latest
+[latest release]: https://github.com/DaveEuson/Yoyu/releases/latest
 
 That download **is the tray app** — a green/amber/red icon appears in your
 menubar (macOS) or system tray (Windows/Linux). On first run it **finds the
@@ -58,7 +58,7 @@ again. (First launch: macOS → right-click → **Open**; Windows → **More inf
 Run anyway**, since the binary isn't code-signed yet.) Right-click / click the
 icon for **Pair**, **Settings**, **Start at login**, and a **Feeding** toggle.
 
-There's also a **HeadroomCompanion-cli** asset — the same thing without a UI,
+There's also a **YoyuCompanion-cli** asset — the same thing without a UI,
 for headless servers or debugging (run it from a terminal to watch the
 `pushed [LIVE]: …` output).
 
@@ -196,7 +196,7 @@ Hitting "login expired", a 404 / "couldn't reach the board", "rate limited", or
 "another companion is already running"? See the
 [troubleshooting guide](../docs/TROUBLESHOOTING.md) — most issues come down to
 the board being reached at the wrong address (e.g. two devices sharing
-`headroom.local`) or a shared-account login expiring.
+`yoyu.local`) or a shared-account login expiring.
 
 ## Security
 

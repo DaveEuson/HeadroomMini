@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Headroom companion — runs on the computer where you use Claude Code.
+"""Yoyu companion — runs on the computer where you use Claude Code.
 
 Reads the *real* Claude subscription usage numbers and pushes them to the Pi.
 
@@ -49,13 +49,17 @@ try:
 except Exception:  # noqa: BLE001
     _SSL_CONTEXT = ssl.create_default_context()
 
-APP_MARKER = "Headroom"  # /api/status "app" field, used for discovery
+APP_MARKER = "Yoyu"  # /api/status "app" field, used for discovery
+# Boards flashed before the rename still answer with these. Discovery has to
+# keep accepting them or a working board on the desk becomes undiscoverable
+# after a companion update -- and the fix would be a USB re-flash.
+LEGACY_MARKERS = ("Headroom", "ClaudeTrackerPi")
 
 CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 REFRESH_URL = "https://platform.claude.com/v1/oauth/token"
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 OAUTH_BETA = "oauth-2025-04-20"
-USER_AGENT = "Headroom-Companion/1.0"
+USER_AGENT = "Yoyu-Companion/1.0"
 KEYCHAIN_SERVICE = "Claude Code-credentials"
 REFRESH_MARGIN = 300  # refresh if the token expires within 5 minutes
 
@@ -541,7 +545,7 @@ def _pair_post(url, path, data=None, headers=None, timeout=15):
 
 
 def pair_device(url, token="", code=None, ask_code=None):
-    """Hand this computer's existing Claude login to a board (Headroom Mini) so
+    """Hand this computer's existing Claude login to a board (Yoyu) so
     it can poll usage on its own — the user never copies a token by hand.
 
     The token is only sent after we prove the endpoint is the real board: it
@@ -629,7 +633,7 @@ def _probe(url):
         req = urllib.request.Request(url.rstrip("/") + "/api/status")
         with urllib.request.urlopen(req, timeout=0.8) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        return data.get("app") in (APP_MARKER, "ClaudeTrackerPi")  # accept old
+        return data.get("app") in (APP_MARKER,) + LEGACY_MARKERS
     except Exception:
         return False
 
@@ -664,7 +668,10 @@ def _local_prefixes():
 
 def discover_pi(port=8080):
     """Find the tracker on the LAN with no address typing. Returns URL or None."""
-    for host in ("headroom.local", "claudetracker.local", "claudecounter.local"):
+    # yoyu.local first, then the pre-rename hostnames so an older board on the
+    # LAN is still found without the user knowing anything changed.
+    for host in ("yoyu.local", "headroom.local", "claudetracker.local",
+                 "claudecounter.local"):
         url = f"http://{host}:{port}"
         if _probe(url):
             return url
@@ -726,7 +733,7 @@ def install_autostart():
         startup = os.path.join(os.environ.get("APPDATA", ""), "Microsoft",
                                "Windows", "Start Menu", "Programs", "Startup")
         os.makedirs(startup, exist_ok=True)
-        target = os.path.join(startup, "HeadroomCompanion.bat")
+        target = os.path.join(startup, "YoyuCompanion.bat")
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(f'@echo off\r\nstart "" {cmd}\r\n')
         return target
@@ -757,7 +764,7 @@ def install_autostart():
     exec_start = " ".join(argv)
     with open(target, "w", encoding="utf-8") as fh:
         fh.write(f"""[Unit]
-Description=Headroom companion
+Description=Yoyu companion
 After=network-online.target
 
 [Service]
@@ -778,7 +785,7 @@ def uninstall_autostart():
     for p in (
         os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
                      "Start Menu", "Programs", "Startup",
-                     "HeadroomCompanion.bat"),
+                     "YoyuCompanion.bat"),
         os.path.expanduser("~/Library/LaunchAgents/"
                            "com.claudetracker.companion.plist"),
         os.path.expanduser("~/.config/systemd/user/"
@@ -1063,7 +1070,7 @@ def _single_instance():
 
 def main():
     cfg = load_config()
-    ap = argparse.ArgumentParser(description="Headroom companion")
+    ap = argparse.ArgumentParser(description="Yoyu companion")
     ap.add_argument("--pi", default=cfg["pi"],
                     help="tracker URL(s), comma-separated for multiple "
                          "devices (auto-discovered if omitted)")
@@ -1118,19 +1125,19 @@ def main():
                      "--pi http://<its-address>:8080")
 
     if args.once:
-        print(f"Headroom companion -> {cfg['pi']} (single push)")
+        print(f"Yoyu companion -> {cfg['pi']} (single push)")
         ok, _, _ = run_once(cfg)
         sys.exit(0 if ok else 1)
 
     lock = _single_instance()
     if lock is None:
-        print("Another Headroom companion is already running on this computer "
+        print("Another Yoyu companion is already running on this computer "
               "(probably the auto-started one) — exiting so we don't "
               "double-poll Anthropic. To run this one instead, stop the other "
               "first (or reboot after --uninstall).")
         return
 
-    print(f"Headroom companion -> {cfg['pi']} (every {cfg['interval']}s)")
+    print(f"Yoyu companion -> {cfg['pi']} (every {cfg['interval']}s)")
     if args.actions:
         # First target only: keystrokes land on this computer, so a second
         # board sending them here would just be two remotes for one keyboard.

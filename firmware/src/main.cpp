@@ -1,9 +1,9 @@
-// Headroom Mini — Claude usage meters on a Waveshare ESP32-S3-Touch-LCD-2.
+// Yoyu — Claude usage meters on a Waveshare ESP32-S3-Touch-LCD-2.
 // Copyright (c) 2026 Dave Euson. Made with love in San Diego.
 //
-// v0 scope: join Wi-Fi (first boot: its own "Headroom-Setup" hotspot with a
+// v0 scope: join Wi-Fi (first boot: its own "Yoyu-Setup" hotspot with a
 // phone setup page, like the Pi version), then speak the same HTTP API as the
-// Pi tracker — GET /api/status with the "Headroom" discovery marker and
+// Pi tracker — GET /api/status with the "Yoyu" discovery marker and
 // POST /api/push — so the existing desktop companion feeds it with no changes.
 // Phase 2 (later): poll Anthropic's usage endpoint directly on-device.
 //
@@ -169,8 +169,8 @@ static DNSServer dns;
 static bool apMode = false;
 
 // Same defaults as the Pi build
-static const char *AP_SSID = "Headroom-Setup";
-static const char *AP_PSK  = "headroom";
+static const char *AP_SSID = "Yoyu-Setup";
+static const char *AP_PSK  = "yoyu";
 static const int   API_PORT = 8080;   // what the companion probes
 static const char *FW_VERSION = "1.5.1";
 
@@ -180,14 +180,17 @@ static const char *CLIENT_ID   = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 static const char *REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
 static const char *USAGE_URL   = "https://api.anthropic.com/api/oauth/usage";
 static const char *OAUTH_BETA  = "oauth-2025-04-20";
-static const char *UA          = "Headroom-Mini/1.5.1";
+static const char *UA          = "Yoyu/1.5.1";
 // OTA self-update (over-the-air from the GitHub release)
 static const char *RELEASES_API =
-    "https://api.github.com/repos/DaveEuson/HeadroomMini/releases/latest";
+    "https://api.github.com/repos/DaveEuson/Yoyu/releases/latest";
 static const char *APP_BIN_URL =
-    "https://github.com/DaveEuson/HeadroomMini/releases/latest/download/headroom-mini-app.bin";
+    // Asset filenames deliberately keep the old prefix: boards already in the
+    // field fetch these exact names, and renaming them turns every OTA into a
+    // 404 on hardware that can no longer be reached any other way.
+    "https://github.com/DaveEuson/Yoyu/releases/latest/download/headroom-mini-app.bin";
 static const char *APP_SIG_URL =
-    "https://github.com/DaveEuson/HeadroomMini/releases/latest/download/headroom-mini-app.bin.sig";
+    "https://github.com/DaveEuson/Yoyu/releases/latest/download/headroom-mini-app.bin.sig";
 static const unsigned long POLL_INTERVAL_MS = 5UL * 60UL * 1000UL;
 static unsigned long pollBackoffMs = 0;   // extra wait after a 429, exponential
 
@@ -403,7 +406,7 @@ static void drawLeft(const char *text, int x, int y, uint8_t size, uint16_t colo
 
 static void drawSplash(const char *line1, const char *line2) {
   gfx->fillScreen(C_BG);
-  drawCentered("HEADROOM", 130, 3, C_ACC);
+  drawCentered("YOYU", 130, 3, C_ACC);
   if (line1) drawCentered(line1, 170, 1, C_INK);
   if (line2) drawCentered(line2, 190, 1, C_MUTED);
   char vbuf[16];
@@ -500,7 +503,7 @@ static void drawMeters() {
         drawCentered("companion.py --pair", 212, 1, C_INK);
       }
       // Always show where this board is. Auto-discovery can land on the wrong
-      // device (another Headroom on the LAN answers first), and without the
+      // device (another Yoyu on the LAN answers first), and without the
       // address there's no way to point the companion at the right one.
       if (err && WiFi.status() == WL_CONNECTED) {
         snprintf(buf, sizeof(buf), "%s:%d",
@@ -1296,11 +1299,11 @@ static void checkAlerts() {
     if (used >= alertPct && !st->over) {
       st->over = true;
       snprintf(body, sizeof(body), "%s at %d%% used", w.label, used);
-      sendAlert("Headroom", body);
+      sendAlert("Yoyu", body);
     } else if (used < alertPct - 10 && st->over) {
       st->over = false;
       snprintf(body, sizeof(body), "%s recovered (%d%% used)", w.label, used);
-      sendAlert("Headroom", body);
+      sendAlert("Yoyu", body);
     }
   }
 }
@@ -1376,7 +1379,7 @@ static String adminTokenField() {
 
 static void handleStatus() {
   JsonDocument doc;
-  doc["app"] = "Headroom";        // discovery marker the companion looks for
+  doc["app"] = "Yoyu";        // discovery marker the companion looks for
   doc["mini"] = true;
   // What this board is actually running. The release checklist asks you to
   // confirm an OTA "reboots on the new version", and without this that can only
@@ -1488,7 +1491,7 @@ static void handlePush() {
 static const char PORTAL_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Headroom Wi-Fi setup</title>
+<title>Yoyu Wi-Fi setup</title>
 <style>body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:24px 18px;margin:0}
 .card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;padding:16px;max-width:420px;margin:0 auto}
 h2{margin:.2rem 0 .6rem}p{margin:.4rem 0}
@@ -1502,7 +1505,7 @@ button{display:block;width:100%;background:#d97757;color:#fff;font-weight:600;fo
 .row button{width:auto;padding:8px 12px;font-size:.9rem;background:#e9e6dc;color:#3d3929}
 .muted{color:#6b6759;font-size:.9rem}</style>
 </head><body><div class="card">
-<h2>Connect Headroom to Wi-Fi</h2>
+<h2>Connect Yoyu to Wi-Fi</h2>
 <div class="row"><strong>Pick your network</strong>
 <button type="button" id="rescan">Rescan</button></div>
 <div id="list" class="muted">Scanning&hellip;</div>
@@ -1567,7 +1570,7 @@ static void handleWifiSave() {
   prefs.putString("psk", pass);
   prefs.end();
   server->send(200, "text/html",
-               "<h2>Saved — rebooting.</h2><p>Headroom will join your network."
+               "<h2>Saved — rebooting.</h2><p>Yoyu will join your network."
                " Watch its screen for the address.</p>");
   delay(1200);
   ESP.restart();
@@ -1668,7 +1671,7 @@ static void improvConnect(const char *ssid, const char *pass) {
   drawCentered(ssid, 158, 1, C_MUTED);
 
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname("headroom");
+  WiFi.setHostname("yoyu");
   WiFi.begin(ssid, pass);
   unsigned long t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) delay(200);
@@ -1702,7 +1705,7 @@ static void improvDispatch() {
       break;
     }
     case improv::C_REQUEST_INFO: {
-      const char *info[4] = {"Headroom Mini", FW_VERSION, "ESP32-S3", "Headroom"};
+      const char *info[4] = {"Yoyu", FW_VERSION, "ESP32-S3", "Yoyu"};
       improvSendResult(improv::C_REQUEST_INFO, info, 4);
       break;
     }
@@ -1751,6 +1754,9 @@ static void improvPoll() {
 // ------------------------------------------- Phase 2: on-device usage polling
 
 static void loadCreds() {
+  // NVS namespace stays "headroom" forever. It is invisible to users, and
+  // renaming it would silently drop every board's Wi-Fi, login, alerts and
+  // screen settings the moment it took the update.
   prefs.begin("headroom", true);
   accessTok  = prefs.getString("atok", "");
   refreshTok = prefs.getString("rtok", "");
@@ -2066,7 +2072,7 @@ static void drawUpdateProgress(int pct) {
   if (pct == last) return;
   last = pct;
   gfx->fillScreen(C_BG);
-  drawCentered("Updating Headroom", 110, 2, C_INK);
+  drawCentered("Updating Yoyu", 110, 2, C_INK);
   char b[8];
   snprintf(b, sizeof(b), "%d%%", pct);
   drawCentered(b, 150, 4, C_ACC);
@@ -2174,7 +2180,7 @@ static void handleUpdatePage() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom - update</title><style>"
+      "<title>Yoyu - update</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:16px;max-width:460px;margin:0 auto}h2{margin:.2rem 0 .6rem}"
@@ -2242,7 +2248,7 @@ static void handleConnectPage() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom - connect account</title><style>"
+      "<title>Yoyu - connect account</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:16px;max-width:520px;margin:0 auto}h2{margin:.2rem 0 .6rem}"
@@ -2423,7 +2429,7 @@ static void handleAlertsPage() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom - phone alerts</title><style>"
+      "<title>Yoyu - phone alerts</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:16px;max-width:520px;margin:0 auto}h2{margin:.2rem 0 .6rem}label{font-size:.9rem}"
@@ -2441,7 +2447,7 @@ static void handleAlertsPage() {
       "<label>ntfy topic</label>"
       "<input name=ntfy value='");
   s += htmlEscape(ntfyTopic);
-  s += F("' placeholder='e.g. headroom-dave-9f3'>"
+  s += F("' placeholder='e.g. yoyu-dave-9f3'>"
          "<label>Alert at what % used?</label>"
          "<input name=pct type=number min=50 max=100 value='");
   s += pct;
@@ -2485,7 +2491,7 @@ static void handleAlertsTest() {
                  "<p>Set a topic or keys first. <a href=/alerts>back</a></p>");
     return;
   }
-  sendAlert("Headroom", "Test alert - notifications are working.");
+  sendAlert("Yoyu", "Test alert - notifications are working.");
   server->send(200, "text/html",
                "<p>Sent - check your phone. <a href=/alerts>back</a></p>");
 }
@@ -2513,7 +2519,7 @@ static void handleSettingsPage() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom - settings</title><style>"
+      "<title>Yoyu - settings</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:16px;max-width:520px;margin:0 auto}h2{margin:.2rem 0 .6rem}label{font-size:.9rem}"
@@ -2674,7 +2680,7 @@ static void handleRoot() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom Mini</title><style>"
+      "<title>Yoyu</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:18px;max-width:520px;margin:0 auto 14px}h1{margin:.1rem 0}"
@@ -2689,13 +2695,13 @@ static void handleRoot() {
       "<div class=card style='display:flex;align-items:center;gap:14px'>"
       "<div class=ava>");
   s += sprocketSvg(52);
-  s += F("</div><div><h1 style='margin:0 0 5px'>Headroom Mini</h1><span class=pill>");
+  s += F("</div><div><h1 style='margin:0 0 5px'>Yoyu</h1><span class=pill>");
   s += st;
   s += F("</span></div></div><div class=card><h3>See your Claude usage</h3><ol>"
          "<li><b>Download the companion app</b> and open it.</li>"
          "<li>That's it &mdash; it finds this board on your network and shows "
          "your usage. It also starts with your computer so it stays live.</li>"
-         "</ol><p><a class=btn href='https://daveeuson.github.io/HeadroomMini/'>"
+         "</ol><p><a class=btn href='https://daveeuson.github.io/Yoyu/'>"
          "Get the companion app</a></p>"
          "<p class=muted>No typing, no address to enter.</p></div>"
          "<div class=card><details><summary><b>Advanced:</b> run without your "
@@ -2703,7 +2709,7 @@ static void handleRoot() {
          "<p>Normally you just leave the companion running (above) &mdash; that's "
          "the recommended setup. If you'd rather the board keep updating with your "
          "computer <i>off</i>, pair it once and it polls Anthropic itself:</p>"
-         "<p><code>HeadroomCompanion --pair</code></p>"
+         "<p><code>YoyuCompanion --pair</code></p>"
          "<p class=muted>(finds this board automatically. From source: "
          "<code>python companion.py --pair</code>.)</p>"
          "<p class=muted style='color:#c2410c'><b>Use a spare Claude account for "
@@ -2730,7 +2736,7 @@ static void handleRoot() {
   s += ip;
   s += ":";
   s += API_PORT;
-  s += F(" &middot; headroom.local:8080</p>"
+  s += F(" &middot; yoyu.local:8080</p>"
          "<p class=muted style='text-align:center;font-size:.78rem;margin:2px 0 8px'>"
          "Made by Dave Euson with <span style='color:#d97757'>&hearts;</span> "
          "in San Diego &middot; &copy; 2026 Dave Euson</p>"
@@ -3010,7 +3016,7 @@ static void startApi() {
   const char *watch[] = {"X-Push-Token", "X-Pair-Nonce", "X-Pair-Mac"};
   server->collectHeaders(watch, 3);
   server->begin();
-  MDNS.begin("headroom");
+  MDNS.begin("yoyu");
   MDNS.addService("http", "tcp", API_PORT);
 }
 
@@ -3037,7 +3043,7 @@ void setup() {
 
   drawSplash("joining Wi-Fi...", ssid.c_str());
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname("headroom");
+  WiFi.setHostname("yoyu");
   WiFi.begin(ssid.c_str(), psk.c_str());
   unsigned long t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 30000) delay(250);
