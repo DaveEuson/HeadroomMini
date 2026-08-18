@@ -9,8 +9,8 @@ web
 Recorded as `web` because that is the platform value the design-language
 references key off, and the setup page is the only surface they apply to. Two
 of the four in-scope surfaces are **not** web and must not be treated as such:
-the on-device UI is embedded C++ drawing directly to a 240×320 ST7789, and the
-companion is a Python desktop tray app. See *Capabilities and Constraints*.
+the on-device UI is embedded C++ drawing directly to a panel over SPI/QSPI, and
+the companion is a Python desktop tray app. See *Capabilities and Constraints*.
 
 ## Users
 
@@ -49,18 +49,26 @@ same ones `claude /usage` reports — rather than performing a fresh third-party
 sign-in that would hit Anthropic's login throttle. Numbers are real, not
 estimated.
 
-Supporting position: it runs entirely on one ~$26 Waveshare
-ESP32-S3-Touch-LCD-2 — no Raspberry Pi, no Linux, no soldering — and installs
-from a browser page with no VS Code and no command line. A deluxe Raspberry Pi
-Zero 2 W variant with a full web dashboard and the "Pip" mascot lives in a
-separate repo (YoyuZero); this repo is the self-contained ESP32 appliance.
+Supporting position: it runs entirely on one inexpensive ESP32-S3 board — no
+Raspberry Pi, no Linux, no soldering — and installs from a browser page with no
+VS Code and no command line. A deluxe Raspberry Pi Zero 2 W variant with a full
+web dashboard and the "Pip" mascot lives in a separate repo (YoyuZero); this
+repo is the self-contained ESP32 appliance.
+
+**This is not a category of one.** At least one commercially sold device in
+this exact category exists. Copy must never claim to be the only or first
+product that shows Claude usage on a desk; the defensible claim is the
+mechanism above (real numbers via the existing CLI login, self-contained after
+pairing, free and MIT), not novelty.
 
 ## Operating Context
 
 The setup chain, in the order a buyer meets it:
 
-1. **Buy** the Waveshare ESP32-S3-Touch-LCD-2 (Amazon affiliate link or direct
-   from Waveshare).
+1. **Buy** a supported board — the ~$26 Waveshare ESP32-S3-Touch-LCD-2 (Amazon
+   affiliate link or direct from Waveshare), or the larger AMOLED board (see
+   *Capabilities and Constraints*). The setup chain must make the choice before
+   the flash step, because the image and the panel have to match.
 2. **Flash** at `https://daveeuson.github.io/Yoyu/` (`docs/index.html`)
    in Chrome or Edge on a computer, over a data USB-C cable. Phones, Safari and
    Firefox cannot flash — a real and recurring failure point.
@@ -91,10 +99,20 @@ The environment is assumed to be a trusted home or office network.
   **self-hosted, not CDN-loaded**, because the page collects Wi-Fi credentials.
   That constraint is binding: no third-party script or asset host on this page.
 - `firmware/src/main.cpp` — the on-device UI. **Embedded C++, not LVGL**: text
-  and shapes are drawn with direct TFT calls on a 2" 240×320 ST7789 IPS panel.
-  Browser tooling, the bundled HTML detector, and `live` mode do not apply.
-  Constraints are real: fixed bitmap font sizes, no compositing, redraw cost,
-  a fixed small palette, and legibility at arm's length on a 2" screen.
+  and shapes are drawn with direct TFT calls. Browser tooling, the bundled HTML
+  detector, and `live` mode do not apply. Constraints are real: fixed bitmap
+  font sizes, no compositing, redraw cost, a fixed small palette, and legibility
+  at arm's length.
+
+  **Two supported panels, one design space.** Every screen is authored against a
+  fixed 240×320 reference and mapped to the real panel at draw time (`mapX` /
+  `mapY` for position, `mapSz` for the bitmap-font step, which can only move in
+  whole multiples). Nothing may be authored in raw device pixels: on a larger
+  panel raw coordinates collapse the layout into the top-left corner. Art with
+  its own grid fits itself to the glass on **both** axes rather than riding the
+  font step — a tall panel runs out of width first, a wide one runs out of
+  height, and using the font step for this overflowed the mascot off a 410px
+  panel. Design that only works at one size is not finished.
 - `companion/tray.py` and the companion's terminal output — a Python `pystray`
   menubar/system-tray app. Menu surface: status line, Feeding toggle, Start at
   login, Pair board, Open board page, Settings submenu (screens/clock,
@@ -103,6 +121,20 @@ The environment is assumed to be a trusted home or office network.
   are real.
 - `README.md`, `docs/TROUBLESHOOTING.md`, `docs/HARDENING.md` — the reading
   experience for evaluation and debugging.
+
+**Supported hardware:**
+
+- **Waveshare ESP32-S3-Touch-LCD-2** — 2" 240×320 ST7789 IPS, ~$26. The
+  reference panel: the design space is 1:1 with it, so it is the one board
+  where the mapping is the identity.
+- **Waveshare ESP32-S3-Touch-AMOLED-2.16** — a second *supported* board, not a
+  developer curiosity. Its exact resolution is unconfirmed until hardware is in
+  hand; the layout maths is written to fit any panel, not one measured number.
+  Until it is verified on the real thing, treat AMOLED rendering as untested
+  rather than working.
+
+Buyers choose between them, so anywhere the chain says "the board" it now has
+to say which — the flash image, the pinout, and the enclosure all differ.
 
 **Device UI:** eight screens — Meters, Focus, History, Yoyu, Timer, Actions,
 Projects, Settings — cycled by tap, each individually enable-able via a screen
@@ -161,8 +193,29 @@ real keystroke to the computer and *then* jump. Correcting it would mean
 holding every tap ~250 ms to see whether a second follows, which is visible lag
 on "next screen" for a shortcut that only duplicates paging.
 
-**Security constraints that design must not undercut:** verified TLS against a
-pinned root CA set on every outbound connection (no `setInsecure()`); OTA
+**Identifiers that deliberately did not follow the rename.** Renaming these
+would break boards already in the field, so they keep the old name on purpose
+and future work must not "tidy" them:
+
+- the NVS namespace `headroom` — renaming it orphans every saved Wi-Fi
+  credential, login, and setting on every board that has ever been set up;
+- the release asset names `headroom-mini-*.bin` / `.sig` — the firmware fetches
+  these by exact name for OTA, so a board running any shipped build looks for
+  the old name. Changing them needs its own transition (publish both names for
+  several releases) and cannot ride along with a cosmetic rename.
+
+**The repo rename is pending and the code already assumes it.** The firmware
+and the setup page hardcode `DaveEuson/Yoyu` and `daveeuson.github.io/Yoyu`;
+the repo is still `HeadroomMini`, so both 404 today and on-device OTA silently
+reports "couldn't reach GitHub". The rename has to land before any release cut
+from this state. The Pi sibling renames too: `HeadroomZero` → `YoyuZero`,
+including the cross-links in both repo descriptions.
+
+**Security constraints that design must not undercut:** verified TLS on every
+outbound connection — the shipping build uses the full ESP-IDF Mozilla root
+bundle (`setCACertBundle`), and the two escape hatches in the source,
+`HR_TLS_INSECURE` and `HR_TLS_CURATED_ROOTS`, are development-only and are not
+set in `platformio.ini`. No `setInsecure()` ships. OTA
 images verified against a public key baked into the firmware; pairing requires
 a one-time code shown on the physical screen before a login is handed over.
 
@@ -185,6 +238,11 @@ polls the same account; charge-only USB-C cables; unsupported browsers.
   room to spare, one when there is almost none. Present as an inline pixel SVG
   on the setup page and as an animated screen on the board. It is an established
   asset, not a decoration to be swapped out.
+- **Why these names.** Both predecessors were dropped for collisions, not
+  taste, so neither is available to return to: **Headroom** collides with a
+  widely-starred Claude-token project of the same name, and **Sprocket** (the
+  retired robot mascot) collides with a consumer-hardware product line and
+  several live trademarks. Yoyu was chosen partly because it is close to unused.
 - **Voice:** plain, concrete, reassuring about difficulty — "No terminal, no
   menubar, no estimating," "no VS Code, no command line," "you'll only do this
   once." It names costs honestly (charge-only cables, unsupported browsers,
@@ -198,6 +256,9 @@ polls the same account; charge-only USB-C cables; unsupported browsers.
 
 - Real product photography: `docs/img/meters.jpg`, `docs/img/timer.jpg`,
   `docs/img/sprocket.jpg` — the actual board running, used in the README.
+  **`sprocket.jpg` is stale**: it photographs the retired blue robot mascot and
+  is the README's hero image. It needs re-shooting against the kitsune before
+  any surface leans on it; do not present it as current.
 - Working firmware, companion, and tests (`companion/test_companion.py`).
 - Real published docs: `docs/TROUBLESHOOTING.md`, `docs/HARDENING.md`
   (threat model), `docs/RELEASE.md`.
@@ -207,7 +268,14 @@ polls the same account; charge-only USB-C cables; unsupported browsers.
 **Absences future work must not fabricate:** there are no testimonials,
 reviews, user counts, download numbers, star counts, press mentions, benchmarks,
 or sales figures. There is no pricing for the software — it is free and MIT;
-the only price is the ~$26 third-party board. Do not invent social proof.
+the only price is the third-party board. Do not invent social proof.
+
+**Open decision — hardware sales.** Selling assembled units is possible but not
+decided. Until it is, surfaces keep the bring-your-own-board framing and must
+not imply hardware is for sale — and equally must not write copy that would
+have to be torn out if it ever is. In practice: describe the board as something
+the reader buys and flashes, never as something shipped to them, and keep the
+purchase step separable from the rest of the chain.
 
 ## Product Principles
 
@@ -226,12 +294,16 @@ the only price is the ~$26 third-party board. Do not invent social proof.
    must be legible as such, on the board and in the companion.
 5. **Glanceable at arm's length.** The board is read in under a second from
    across a desk, in ambient conditions, without touching it. That constraint
-   outranks density on every device screen.
+   outranks density on every device screen, and it is a *physical* distance —
+   so a bigger panel is an invitation to draw larger, never to fit more in.
 
 ## Accessibility & Inclusion
 
 No product-specific standard has been established by the user. Two factual
-constraints are worth carrying forward: the device UI is a small 2" panel read
-at distance, so size and contrast carry real functional load; and usage state on
-the board is signaled by color (amber under 30%, red under 10%), which should
-not be the only carrier of that meaning.
+constraints are worth carrying forward: the device UI is a small panel read at
+distance, so size and contrast carry real functional load, and the bitmap font
+moves only in whole multiples — there is no half-step between too small and too
+big; and usage state on the board is signaled by color (amber under 30%, red
+under 10%), which should not be the only carrier of that meaning. The meters
+already pair color with fill length and a printed percentage; the kitsune's
+tail count is a second non-color carrier of the same reading.
