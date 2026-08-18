@@ -62,21 +62,29 @@ static inline void tlsTrust(WiFiClientSecure &c) {
 #endif
 }
 
-// ---------------------------------------------------------------- pins / lcd
+// ------------------------------------------------------------ panel / board
 
-#define LCD_SCLK 39
-#define LCD_MOSI 38
-#define LCD_MISO 40
-#define LCD_DC   42
-#define LCD_CS   45
-#define LCD_BL    1
-#define LCD_RST  -1   // no reset line; ST7789 soft reset
+// Pins and panel geometry for every supported board live in boards.h, selected
+// by the -DYOYU_BOARD_* flag platformio.ini passes. Nothing board-specific is
+// allowed to appear below this line.
+#include "boards.h"
 
+#if PANEL_IS_QSPI
+// Arduino_ESP32QSPI names its four data lines (mosi, miso, quadwp, quadhd),
+// which are D0..D3 on the panel datasheet.
+static Arduino_DataBus *bus =
+    new Arduino_ESP32QSPI(QSPI_CS, QSPI_CLK, QSPI_D0, QSPI_D1, QSPI_D2, QSPI_D3);
+static Arduino_GFX *gfx =
+    new Arduino_CO5300(bus, PANEL_RST, PANEL_ROTATION, true /*IPS*/,
+                       PANEL_W, PANEL_H);
+#else
 static Arduino_DataBus *bus =
     new Arduino_ESP32SPI(LCD_DC, LCD_CS, LCD_SCLK, LCD_MOSI, LCD_MISO);
 // rotation 2 = portrait 240x320 flipped 180° (USB-C connector at the top)
 static Arduino_GFX *gfx =
-    new Arduino_ST7789(bus, LCD_RST, 2 /*rotation*/, true /*IPS*/, 240, 320);
+    new Arduino_ST7789(bus, LCD_RST, PANEL_ROTATION, true /*IPS*/,
+                       PANEL_W, PANEL_H);
+#endif
 // Off-screen framebuffer (PSRAM) for the animated kitsune screen: draw a whole
 // frame into RAM, then blit it in one pass so the animation never flickers.
 static Arduino_Canvas *mascotBuf = nullptr;
@@ -90,28 +98,53 @@ static Arduino_Canvas *mascotBuf = nullptr;
 // On the reference panel the mapping is the identity, so this refactor cannot
 // move a single pixel on hardware that exists today. That is the property that
 // makes it verifiable now rather than whenever a bigger board arrives.
-static const int REF_W = 240;
-static const int REF_H = 320;
+static const int REF_W = DESIGN_W;
+static const int REF_H = DESIGN_H;
 static int     scrW    = REF_W;     // real panel, filled in at boot
 static int     scrH    = REF_H;
 static uint8_t uiScale = 1;         // bitmap-font multiplier for larger panels
 
+// The scale is ONE number for both axes, in 8.8 fixed point, plus a centring
+// offset. Scaling each axis to its own panel dimension is the obvious thing and
+// it is wrong: the 2.16" board is 480x480 against a 240x320 design space, which
+// works out at x2.00 across and x1.50 down, so everything renders a third wider
+// than it is tall. A square panel is not a bigger portrait panel.
+//
+// Fitting the tighter axis instead costs the margins -- 60px down each side on
+// that board, a quarter of the glass -- and keeps every proportion the design
+// was drawn with. Reclaiming those margins means drawing square variants of
+// each screen, which is a design job, not a scaling constant.
+static int32_t mapQ = 256;          // uniform scale, 256 = 1:1
+static int     offX = 0, offY = 0;  // letterbox offsets, centring the design space
+
 // Named mapX/mapY rather than anything shorter: the mascot sprite already has
 // locals called lx, rx, px and my, and a helper those would shadow is a trap
 // for whoever edits that function next.
-static inline int mapX(int x) { return (int)((long)x * scrW / REF_W); }
-static inline int mapY(int y) { return (int)((long)y * scrH / REF_H); }
-// Fonts are bitmaps, so they scale in whole steps or not at all: a 410px-wide
-// panel would otherwise render the same 6px glyphs across nearly twice the
-// glass. Rounded rather than truncated, so 410/240 reads as 2, not 1.
+static inline int mapX(int x) { return offX + (int)(((int32_t)x * mapQ) >> 8); }
+static inline int mapY(int y) { return offY + (int)(((int32_t)y * mapQ) >> 8); }
+// A LENGTH in design units — scaled, but not shifted into place. mapX/mapY
+// answer "where is this point"; mapLen answers "how big is this". They were the
+// same arithmetic until the design space stopped filling the panel, and every
+// width, height, radius and delta has to use this one instead: on a letterboxed
+// panel, sizing a bar with mapX would add the 60px left margin to its width as
+// well as its position. On the reference panel the two are identical, which is
+// why the distinction could go unnoticed for as long as it did.
+static inline int mapLen(int n) { return (int)(((int32_t)n * mapQ) >> 8); }
+// Fonts are bitmaps, so they scale in whole steps or not at all: a 480px-wide
+// panel would otherwise render the same 6px glyphs across twice the glass.
+// Rounded rather than truncated, so a x1.5 panel reads as 2, not 1.
 static inline uint8_t mapSz(uint8_t s) { return (uint8_t)(s * uiScale); }
 
 static void initLayout() {
   scrW = gfx->width();
   scrH = gfx->height();
-  int sw = (scrW + REF_W / 2) / REF_W;
-  int sh = (scrH + REF_H / 2) / REF_H;
-  int s = sw < sh ? sw : sh;        // never let one axis outgrow the other
+  int32_t qx = ((int32_t)scrW << 8) / REF_W;
+  int32_t qy = ((int32_t)scrH << 8) / REF_H;
+  mapQ = qx < qy ? qx : qy;         // never let one axis outgrow the other
+  if (mapQ < 1) mapQ = 1;
+  offX = (scrW - (int)(((int32_t)REF_W * mapQ) >> 8)) / 2;
+  offY = (scrH - (int)(((int32_t)REF_H * mapQ) >> 8)) / 2;
+  int32_t s = (mapQ + 128) >> 8;    // round to the nearest whole font step
   uiScale = (uint8_t)(s < 1 ? 1 : s);
 }
 
@@ -232,13 +265,17 @@ static const char *UA          = "Yoyu/1.6.0";
 // OTA self-update (over-the-air from the GitHub release)
 static const char *RELEASES_API =
     "https://api.github.com/repos/DaveEuson/Yoyu/releases/latest";
-static const char *APP_BIN_URL =
-    // Asset filenames deliberately keep the old prefix: boards already in the
-    // field fetch these exact names, and renaming them turns every OTA into a
-    // 404 on hardware that can no longer be reached any other way.
-    "https://github.com/DaveEuson/Yoyu/releases/latest/download/headroom-mini-app.bin";
-static const char *APP_SIG_URL =
-    "https://github.com/DaveEuson/Yoyu/releases/latest/download/headroom-mini-app.bin.sig";
+// Built from the board's own prefix. This is a safety property, not a naming
+// one: both boards' images are validly signed, so the signature check would
+// accept the LCD image onto an AMOLED board and leave it with a driver that
+// cannot talk to its panel.
+#define GH_DL "https://github.com/DaveEuson/Yoyu/releases/latest/download/"
+// OTA_ASSET_PREFIX is per-board and lives in boards.h. The LCD board's prefix
+// is deliberately still "headroom-mini": boards already in the field fetch
+// those exact names, and renaming them turns every OTA into a 404 on hardware
+// that can no longer be reached any other way.
+static const char *APP_BIN_URL = GH_DL OTA_ASSET_PREFIX "-app.bin";
+static const char *APP_SIG_URL = GH_DL OTA_ASSET_PREFIX "-app.bin.sig";
 static const unsigned long POLL_INTERVAL_MS = 5UL * 60UL * 1000UL;
 static unsigned long pollBackoffMs = 0;   // extra wait after a 429, exponential
 
@@ -253,7 +290,9 @@ static char     pollStatus[48] = "";  // last on-device poll result (shown when 
 // UI / input state (Phase 1.5)
 static const int BL_CHANNEL = 0;      // LEDC channel for backlight PWM
 static const int BOOT_BTN    = 0;     // BOOT button -> hold to factory reset
-static const int BAT_ADC_PIN = 5;     // VBAT via 200K/100K divider (x3), ADC1_CH4
+#if HAS_BATTERY_ADC
+static const int BAT_ADC_PIN = VBAT_PIN;  // via the onboard divider (x3)
+#endif
 static int       batPct      = -1;    // -1 = no battery / hidden
 static bool      batCharging = false;
 static uint8_t   backlight   = 255;   // 0..255
@@ -339,6 +378,26 @@ static unsigned long lastUserTouch = 0;  // for pausing auto-rotate after a tap
 static bool screenEnabled(int i) { return screenMask & (1 << i); }
 static bool      updateAvailable = false; // a newer release has been seen online
 static char      latestSeen[16]  = "";    // its tag, for the landing/update page
+// Last tag we actually got from GitHub, and when. Lets one user action cost one
+// round trip instead of two — see fetchLatestTag().
+// cachedTag[0] is the validity marker, not cachedTagAt, so a fetch that lands
+// on millis() == 0 isn't mistaken for "never fetched".
+static char      cachedTag[16]   = "";
+static unsigned long cachedTagAt = 0;
+// Long enough that rendering /update and then POSTing its button reuses one
+// answer, short enough that a release published while you are looking at the
+// page is still picked up on a refresh.
+static const unsigned long TAG_CACHE_MS     = 60000;
+static const uint8_t       TAG_FETCH_TRIES  = 3;
+static const unsigned long TAG_RETRY_DELAY_MS = 400;
+// Release-check health, surfaced in /api/status. The check fails intermittently
+// and the leading theory is that two TLS handshakes close together exhaust the
+// heap — which can't be confirmed or killed on a board sitting on a shelf
+// without numbers to read remotely.
+static uint32_t  tagHeapBefore   = 0;     // free heap entering the fetch
+static uint32_t  tagHeapAfter    = 0;     // free heap once the handshake settled
+static uint8_t   tagFetchTries   = 0;     // attempts the last fetch took (0 = never ran)
+static bool      tagFetchOk      = false; // whether it eventually succeeded
 
 // Usage history: a ring buffer of the headline utilization, one sample every
 // SAMPLE_INTERVAL_MS, persisted to flash hourly so it survives reboots.
@@ -357,12 +416,22 @@ static bool nightNow() {
   return t.tm_hour >= 22 || t.tm_hour < 7;
 }
 
-// Effective backlight = 0 if screen is off, capped to NIGHT_LEVEL overnight,
-// else the user's brightness. Keeps the daytime preference intact.
+// Effective brightness = 0 if screen is off, capped to NIGHT_LEVEL overnight,
+// else the user's setting. Keeps the daytime preference intact.
+//
+// The IPS panel dims a backlight LED behind the glass; the AMOLED is
+// self-emissive and has no such pin, so the same number goes to the panel
+// itself as a command. Same scale either way, so everything above this is
+// unchanged -- including the settings UI and the swipe gesture.
 static void applyBacklight() {
   uint8_t eff = backlight;
   if (nightDim && nightNow() && eff > NIGHT_LEVEL) eff = NIGHT_LEVEL;
-  ledcWrite(BL_CHANNEL, screenOff ? 0 : eff);
+  if (screenOff) eff = 0;
+#if PANEL_HAS_BACKLIGHT
+  ledcWrite(BL_CHANNEL, eff);
+#else
+  static_cast<Arduino_CO5300 *>(gfx)->setBrightness(eff);
+#endif
 }
 
 static void setBacklight(uint8_t v) {
@@ -425,7 +494,7 @@ static void fmtClock(time_t resets, char *out, size_t n) {
 // `y` and `size` are in design space; both are mapped to the real panel here,
 // so callers keep reading as the 240x320 layout they were written against.
 static void drawCentered(const char *text, int y, uint8_t size, uint16_t color) {
-  const int MAXW = scrW - mapX(4);        // 2px breathing room each side, scaled
+  const int MAXW = scrW - mapLen(4);        // 2px breathing room each side, scaled
   uint8_t sz = mapSz(size);
   int16_t x1, y1; uint16_t w, h;
   while (sz > 1) {
@@ -462,8 +531,18 @@ static void drawSplash(const char *line1, const char *line2) {
   drawCentered(vbuf, 300, 1, C_MUTED);          // firmware version, bottom-center
 }
 
-// Read VBAT (GPIO5, 200K/100K divider -> x3) and map to a rough Li-ion %.
+// Read VBAT through the onboard divider and map to a rough Li-ion %.
+//
+// Boards without a documented divider get the no-battery answer rather than a
+// reading off a pin that means something else there. batPct -1 is the value the
+// rest of the UI already treats as "no battery", so the glyph simply never
+// draws -- no second code path to keep in step.
 static void readBattery() {
+#if !HAS_BATTERY_ADC
+  batPct = -1;
+  batCharging = false;
+  return;
+#else
   uint32_t mv = 0;
   for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(BAT_ADC_PIN);
   float v = (mv / 8) * 3.0f / 1000.0f;             // undo the divider
@@ -476,23 +555,24 @@ static void readBattery() {
   else                 pct = 0;
   batPct = pct > 100 ? 100 : (pct < 0 ? 0 : pct);
   batCharging = v >= 4.25f;                          // held above full = on USB
+#endif
 }
 
 // Small battery glyph at (x,y) in design space; nothing drawn when no battery
 // is present.
 static void drawBattery(int x, int y) {
   if (batPct < 0) return;
-  const int w = mapX(24), h = mapY(12);
+  const int w = mapLen(24), h = mapLen(12);
   const int px = mapX(x), py = mapY(y);
   uint16_t c = batPct <= 10 ? C_CRIT : batPct <= 30 ? C_WARN : C_ACC;
   gfx->drawRect(px, py, w, h, C_MUTED);
-  gfx->fillRect(px + w, py + mapY(3), mapX(2), h - mapY(6), C_MUTED);  // nub
-  int fw = (w - mapX(4)) * batPct / 100;
-  if (fw > 0) gfx->fillRect(px + mapX(2), py + mapY(2), fw, h - mapY(4), c);
+  gfx->fillRect(px + w, py + mapLen(3), mapLen(2), h - mapLen(6), C_MUTED);  // nub
+  int fw = (w - mapLen(4)) * batPct / 100;
+  if (fw > 0) gfx->fillRect(px + mapLen(2), py + mapLen(2), fw, h - mapLen(4), c);
   if (batCharging) {                                 // '+' = charging / on USB
     gfx->setTextSize(mapSz(1));
     gfx->setTextColor(C_ACC);
-    gfx->setCursor(px - mapX(8), py + mapY(3));
+    gfx->setCursor(px - mapLen(8), py + mapLen(3));
     gfx->print("+");
   }
 }
@@ -501,11 +581,11 @@ static void drawBattery(int x, int y) {
 // a newer release has been seen online; harmless no-op otherwise.
 static void drawUpdateBadge(int cx, int cy) {
   if (!updateAvailable) return;
-  const int x = mapX(cx), y = mapY(cy), r = mapX(8);
+  const int x = mapX(cx), y = mapY(cy), r = mapLen(8);
   gfx->fillCircle(x, y, r, C_ACC);
-  gfx->fillTriangle(x, y - mapY(4), x - mapX(4), y + mapY(1),
-                    x + mapX(4), y + mapY(1), C_BG);          // arrowhead
-  gfx->fillRect(x - mapX(1), y, mapX(3), mapY(5), C_BG);      // shaft
+  gfx->fillTriangle(x, y - mapLen(4), x - mapLen(4), y + mapLen(1),
+                    x + mapLen(4), y + mapLen(1), C_BG);          // arrowhead
+  gfx->fillRect(x - mapLen(1), y, mapLen(3), mapLen(5), C_BG);      // shaft
 }
 
 static void drawMeters() {
@@ -594,10 +674,10 @@ static void drawMeters() {
     gfx->print(buf);
 
     int barY = y + 44;
-    const int barX = mapX(12), barW = mapX(216), barH = mapY(14);
+    const int barX = mapX(12), barW = mapLen(216), barH = mapLen(14);
     gfx->fillRoundRect(barX, mapY(barY), barW, barH, barH / 2, track);
     int wpx = (int)(barW * left / 100.0f);
-    if (wpx < mapX(8)) wpx = mapX(8);
+    if (wpx < mapLen(8)) wpx = mapLen(8);
     gfx->fillRoundRect(barX, mapY(barY), wpx, barH, barH / 2, fill);
 
     fmtCountdown(w.resets_at, buf, sizeof(buf));
@@ -662,10 +742,10 @@ static void drawFocus() {
   drawCentered(buf, 96, 8, fill);
   drawCentered(showUsed ? "used" : "left", 184, 2, C_MUTED);
 
-  const int fbX = mapX(20), fbW = mapX(200), fbH = mapY(16), fbY = mapY(220);
+  const int fbX = mapX(20), fbW = mapLen(200), fbH = mapLen(16), fbY = mapY(220);
   gfx->fillRoundRect(fbX, fbY, fbW, fbH, fbH / 2, C_ACC_T);
   int wpx = (int)(fbW * left / 100.0f);
-  if (wpx < mapX(10)) wpx = mapX(10);
+  if (wpx < mapLen(10)) wpx = mapLen(10);
   gfx->fillRoundRect(fbX, fbY, wpx, fbH, fbH / 2, fill);
 
   // Projection (session window only): burn rate over the last ~hour of history
@@ -794,7 +874,7 @@ static void drawHistory() {
     drawCentered("collecting...", 150, 1, C_MUTED);
     return;
   }
-  const int gx = mapX(16), gy = mapY(104), gw = mapX(208), gh = mapY(150);
+  const int gx = mapX(16), gy = mapY(104), gw = mapLen(208), gh = mapLen(150);
   gfx->drawFastHLine(gx, gy + gh, gw, C_MUTED);          // baseline (0%)
   gfx->drawFastHLine(gx, gy, gw, C_ACC_T);               // 100% guide
   float bw = (float)gw / HIST_LEN;
@@ -870,14 +950,17 @@ static int kitsuneTails() {
 // 40 (where the sprite starts) to 258 -- far enough up that the caption at +12
 // and the two stat lines below it still land on the glass.
 static int kitsuneCell() {
-  int byW = (scrW - mapX(6)) / K_COLS;    // 6px of breathing room, scaled
-  int byH = mapY(218) / K_ROWS;
+  int byW = (mapLen(REF_W) - mapLen(6)) / K_COLS;    // 6px of breathing room, scaled
+  int byH = mapLen(218) / K_ROWS;
   int s = byW < byH ? byW : byH;
   return s < 1 ? 1 : s;                   // identity (13) on the 240px panel
 }
 
 static void drawKitsuneAnim(int mood, int frame) {
-  const int S = kitsuneCell(), ox = (scrW - K_COLS * S) / 2, oy0 = mapY(40);
+  // Centred within the design area, not the glass: on a letterboxed panel the
+  // caption below it is, so centring on scrW would visibly misalign the two.
+  const int S = kitsuneCell();
+  const int ox = offX + (mapLen(REF_W) - K_COLS * S) / 2, oy0 = mapY(40);
 
   int bob = 0, shake = 0;
   if      (mood == 6) bob   = (frame % 4 < 2) ? -4 : 0;   // party: bounce
@@ -955,7 +1038,7 @@ static void drawKitsuneAnim(int mood, int frame) {
       int cxp = mapX(12 + (i * 71) % 214);
       int cyp = mapY(30 + ((i * 37 + frame * 12) % 200));
       uint16_t cc = (i % 3 == 0) ? C_ACC : (i % 3 == 1) ? C_WARN : C_SPRK;
-      gfx->fillRect(cxp, cyp, mapX(5), mapY(5), cc);
+      gfx->fillRect(cxp, cyp, mapLen(5), mapLen(5), cc);
     }
   } else if (mood == 2) {                          // PANIC: wide eyes + dripping sweat
     gfx->fillRect(lx, ey - S / 4, S, S + S / 4, C_FACE);
@@ -1018,7 +1101,9 @@ static void drawMascot() {
   // Caption sits under the sprite, so it follows the scaled cell size rather
   // than a design-space constant -- otherwise it overlaps on a larger panel.
   const int S = kitsuneCell();
-  int cy = (mapY(40) + K_ROWS * S + mapY(12)) * REF_H / scrH;  // back to design space
+  // Back to design space: subtract the letterbox before dividing by the
+  // scale, or the margin gets counted as part of the sprite's height.
+  int cy = ((mapY(40) - offY) + K_ROWS * S + mapLen(12)) * 256 / mapQ;
   drawCentered(word, cy, 2, mc);
 
   // Stat line: the same window the mascot is reacting to, plus its countdown.
@@ -1059,7 +1144,7 @@ static void drawTimerClock() {
              : s < 300   ? C_CRIT
              : s < 1800  ? C_WARN
                          : C_ACC;
-  gfx->fillRect(0, mapY(150), scrW, mapY(52), C_BG);   // clear the digits band
+  gfx->fillRect(0, mapY(150), scrW, mapLen(52), C_BG);   // clear the digits band
   drawCentered(b, 156, 4, c);
 }
 
@@ -1138,8 +1223,8 @@ static void drawActions() {
   int y = 108;
   for (int i = 0; i < N_ACTIONS; i++) {
     bool sel = (i == actionSel);
-    if (sel) gfx->fillRoundRect(mapX(14), mapY(y - 8), mapX(212), mapY(46),
-                                mapX(10), C_ACC_T);
+    if (sel) gfx->fillRoundRect(mapX(14), mapY(y - 8), mapLen(212), mapLen(46),
+                                mapLen(10), C_ACC_T);
     drawCentered(ACTIONS[i].label, y, 2, sel ? C_ACC : C_MUTED);
     drawCentered(ACTIONS[i].keys, y + 22, 1, C_MUTED);
     y += 56;
@@ -1203,9 +1288,9 @@ static void drawProjects() {
     gfx->setCursor(mapX(226) - (int)w, mapY(y));
     gfx->print(pct);
 
-    const int barX = mapX(14), barW = mapX(212), barH = mapY(6);
+    const int barX = mapX(14), barW = mapLen(212), barH = mapLen(6);
     int bw = (int)(barW * projects[i].share / 100.0f + 0.5f);
-    if (bw < mapX(2)) bw = mapX(2);          // a sliver still reads as "some"
+    if (bw < mapLen(2)) bw = mapLen(2);          // a sliver still reads as "some"
     gfx->fillRect(barX, mapY(y + 12), barW, barH, C_ACC_T);
     gfx->fillRect(barX, mapY(y + 12), bw, barH, c);
     y += 34;
@@ -1281,15 +1366,15 @@ static void drawSettings() {
   snprintf(ver, sizeof(ver), "v%s", FW_VERSION);
   drawCentered(ver, 90, 1, C_MUTED);
 
-  gfx->drawFastHLine(mapX(14), mapY(106), mapX(212), C_ACC_T);
+  gfx->drawFastHLine(mapX(14), mapY(106), mapLen(212), C_ACC_T);
   drawLeft("Screens in rotation", 14, 114, 1, C_MUTED);
 
   int y = 132;
   for (int i = 0; i < UI_SCREENS; i++) {
     bool sel = (i == settingSel);
     bool on  = screenEnabled(i);
-    if (sel) gfx->fillRoundRect(mapX(10), mapY(y - 4), mapX(220), mapY(20),
-                                mapX(5), C_ACC_T);
+    if (sel) gfx->fillRoundRect(mapX(10), mapY(y - 4), mapLen(220), mapLen(20),
+                                mapLen(5), C_ACC_T);
     drawLeft(on ? "[x]" : "[ ]", 16, y, 1, on ? C_ACC : C_MUTED);
     drawLeft(SCREEN_NAMES[i], 46, y, 1, on ? C_INK : C_MUTED);
     y += 21;
@@ -1515,7 +1600,20 @@ static void handleStatus() {
   // on a shelf, or for more than one at a time.
   doc["version"] = FW_VERSION;
   doc["self_hosted"] = selfHosted;
+  doc["board"] = BOARD_SLUG;          // which panel this build drives
   doc["plan"] = plan[0] ? plan : (const char *)nullptr;
+  // Why the last poll said what it said, and how the release check is faring.
+  // Both were previously visible only on the board's own screen, which makes a
+  // board on a shelf — or more than one at a time — undiagnosable remotely.
+  // pollStatus is the string the meters print when they have no data.
+  doc["poll_status"] = pollStatus[0] ? pollStatus : (const char *)nullptr;
+  JsonObject rc = doc["release_check"].to<JsonObject>();
+  rc["ok"]          = tagFetchOk;
+  rc["tries"]       = tagFetchTries;   // 0 = never run since boot
+  rc["latest"]      = cachedTag[0] ? cachedTag : (const char *)nullptr;
+  rc["heap_before"] = tagHeapBefore;
+  rc["heap_after"]  = tagHeapAfter;
+  rc["heap_free"]   = ESP.getFreeHeap();
   JsonArray arr = doc["windows"].to<JsonArray>();
   for (int i = 0; i < nWindows; i++) {
     JsonObject o = arr.add<JsonObject>();
@@ -2162,7 +2260,8 @@ static bool tagNewer(const char *latest, const char *current) {
 }
 
 // The latest published release's tag (e.g. "v1.1.0"), or "" on failure.
-static String fetchLatestTag() {
+// One attempt. Returns "" on any failure; the retry policy lives in the caller.
+static String fetchLatestTagOnce() {
   WiFiClientSecure client;
   tlsTrust(client);
   HTTPClient https;
@@ -2185,6 +2284,41 @@ static String fetchLatestTag() {
   return tag ? String(tag) : "";
 }
 
+// The latest published release's tag (e.g. "v1.1.0"), or "" once it has really
+// failed.
+//
+// Retried, and cached for TAG_CACHE_MS. Both exist because of the same observed
+// bug: the update page would offer an "Install update" button, and the POST
+// behind it -- which re-checked with its own second fetch -- would come back
+// "already on the latest version". A single handshake fails often enough to see
+// by hand, and returning "" for a transient failure is indistinguishable from
+// "definitely up to date", which is the wrong default of the two.
+//
+// The cache also makes one user action cost one round trip instead of two,
+// which matters more than the saved traffic: the second handshake was the one
+// that kept failing.
+static String fetchLatestTag() {
+  unsigned long now = millis();
+  if (cachedTag[0] && (now - cachedTagAt) < TAG_CACHE_MS) return String(cachedTag);
+
+  tagHeapBefore = ESP.getFreeHeap();
+  String tag;
+  for (tagFetchTries = 1; tagFetchTries <= TAG_FETCH_TRIES; tagFetchTries++) {
+    tag = fetchLatestTagOnce();
+    if (tag.length()) break;
+    // A TLS handshake needs tens of KB; back off rather than immediately
+    // asking for another one, so a heap-pressure failure has a chance to clear.
+    if (tagFetchTries < TAG_FETCH_TRIES) delay(TAG_RETRY_DELAY_MS);
+  }
+  tagHeapAfter = ESP.getFreeHeap();
+  tagFetchOk = tag.length() > 0;
+  if (tagFetchOk) {
+    strlcpy(cachedTag, tag.c_str(), sizeof(cachedTag));
+    cachedTagAt = millis();
+  }
+  return tag;
+}
+
 // Periodic background check: is a newer release out than what we're running?
 // Sets the flag that lights the on-screen update badge. Cheap and best-effort.
 static void checkForUpdate() {
@@ -2204,9 +2338,9 @@ static void drawUpdateProgress(int pct) {
   char b[8];
   snprintf(b, sizeof(b), "%d%%", pct);
   drawCentered(b, 150, 4, C_ACC);
-  gfx->drawRect(mapX(30), mapY(208), mapX(180), mapY(16), C_MUTED);
-  int w = mapX(176) * pct / 100;
-  if (w > 0) gfx->fillRect(mapX(32), mapY(210), w, mapY(12), C_ACC);
+  gfx->drawRect(mapX(30), mapY(208), mapLen(180), mapLen(16), C_MUTED);
+  int w = mapLen(176) * pct / 100;
+  if (w > 0) gfx->fillRect(mapX(32), mapY(210), w, mapLen(12), C_ACC);
   drawCentered("keep it powered", 244, 1, C_MUTED);
 }
 
@@ -2345,6 +2479,11 @@ static void handleUpdateInstall() {
   // stale or hand-crafted POST can't trigger a needless re-flash or a downgrade.
   // (This is a browser-form endpoint, so it can't carry the X-Push-Token header;
   // the version gate is what protects it.)
+  //
+  // This used to be a second network round trip, moments after the one that
+  // rendered the button — and it was the one that failed, telling people who
+  // had just been offered an update that they were already current. The check
+  // stays; fetchLatestTag() now serves it from the cache the page filled.
   String latest = fetchLatestTag();
   if (!latest.length() || !tagNewer(latest.c_str(), FW_VERSION)) {
     server->send(409, "text/html",
@@ -2935,14 +3074,18 @@ static void checkBootButton() {
 }
 
 // ------------------------------------------------------------- touch + motion
-// Shared I2C bus (SDA 48 / SCL 47, 400 kHz): CST816D touch @ 0x15 (polled,
-// no INT/RST), QMI8658 6-axis IMU @ 0x6B. Register maps verified against the
-// Waveshare ESP-IDF demo + community drivers. Both degrade gracefully: if a
-// chip isn't found, its feature is simply disabled.
+// Shared I2C bus, 400 kHz: the touch controller and a QMI8658 6-axis IMU @ 0x6B.
+// Pins and the touch address are per-board (boards.h). The CST816D register map
+// was verified against the Waveshare ESP-IDF demo + community drivers; the
+// CST9220 on the AMOLED board is UNVERIFIED -- see touchRead().
+//
+// Both chips degrade gracefully: if one isn't found, its feature is simply
+// disabled. That is worth remembering when bringing up a new board, because it
+// means wrong pins or a wrong address look exactly like working hardware with
+// the feature switched off, rather than like a failure.
 
-static const int     I2C_SDA    = 48;
-static const int     I2C_SCL    = 47;
-static const uint8_t TOUCH_ADDR = 0x15;
+static const int     I2C_SDA    = TOUCH_SDA;
+static const int     I2C_SCL    = TOUCH_SCL;
 static const uint8_t IMU_ADDR_A = 0x6B;   // Waveshare default (SA0 high)
 static const uint8_t IMU_ADDR_B = 0x6A;   // fallback
 static uint8_t imuAddr  = 0;
@@ -2966,6 +3109,15 @@ static void i2cWrite(uint8_t addr, uint8_t reg, uint8_t val) {
 }
 
 static void sensorsBegin() {
+#if TOUCH_RST != GFX_NOT_DEFINED
+  // The CST9220 holds itself in reset until this is released; the CST816D has
+  // no reset line brought out at all.
+  pinMode(TOUCH_RST, OUTPUT);
+  digitalWrite(TOUCH_RST, LOW);
+  delay(10);
+  digitalWrite(TOUCH_RST, HIGH);
+  delay(50);
+#endif
   Wire.begin(I2C_SDA, I2C_SCL, 400000);
   Wire.beginTransmission(TOUCH_ADDR);
   touchOk = (Wire.endTransmission() == 0);
@@ -3071,6 +3223,12 @@ static void dispatchGesture(uint8_t g) {
 // gesture seen during the press (handles tap / long-press / swipe uniformly).
 static void pollTouch() {
   if (!touchOk) return;
+#if !TOUCH_IS_CST816
+  // Touch is not wired for this board's controller yet; see boards.h. Every
+  // other input path (BOOT button, web UI, auto-rotate) still works, so the
+  // board is usable, just not tappable.
+  return;
+#else
   uint8_t b[6];
   if (!i2cRead(TOUCH_ADDR, 0x01, b, 6)) return;
   uint8_t gesture = b[0], finger = b[1];
@@ -3084,6 +3242,7 @@ static void pollTouch() {
     touching = false;
     lastG = 0;
   }
+#endif
 }
 
 // Accelerometer: flip-to-sleep and shake-to-wake. Self-calibrating — it takes
@@ -3178,8 +3337,10 @@ static void startApi() {
 void setup() {
   Serial.begin(115200);
   pinMode(BOOT_BTN, INPUT_PULLUP);   // hold 5s -> factory reset Wi-Fi
+#if PANEL_HAS_BACKLIGHT
   ledcSetup(BL_CHANNEL, 5000, 8);    // backlight PWM (active high on this board)
   ledcAttachPin(LCD_BL, BL_CHANNEL);
+#endif
   setBacklight(255);
   gfx->begin(40000000);
   initLayout();                      // must precede any drawing
