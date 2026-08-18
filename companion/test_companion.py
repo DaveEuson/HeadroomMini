@@ -339,3 +339,27 @@ class StaleAutostartSweepTests(unittest.TestCase):
 
     def test_no_op_when_nothing_is_there(self):
         self.assertEqual(companion.sweep_stale_autostart(self.dir), [])
+
+
+class EntryPointSweepTests(unittest.TestCase):
+    """Every way of starting the companion must run the stale-autostart sweep.
+
+    Structural rather than behavioural on purpose: tray.py imports pystray,
+    which is not a test dependency, so this reads the source instead of the
+    module. It exists because the sweep shipped in v1.6.1 reaching only one of
+    the two entry points -- the CLI swept, the tray app did not, and the tray
+    app is the build most people download. Source-level is enough to catch an
+    entry point that forgets.
+    """
+
+    def _src(self, name):
+        path = os.path.join(os.path.dirname(os.path.abspath(companion.__file__)),
+                            name)
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_cli_entry_point_sweeps(self):
+        self.assertIn("sweep_stale_autostart()", self._src("companion.py"))
+
+    def test_tray_entry_point_sweeps(self):
+        self.assertIn("sweep_stale_autostart()", self._src("tray.py"))
