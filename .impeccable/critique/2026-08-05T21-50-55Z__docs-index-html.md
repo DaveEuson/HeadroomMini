@@ -10,7 +10,7 @@ slug: docs-index-html
 ---
 Method: dual-agent (A: a501a85e3c317bf60 · B: ad91f2a7c30bb921e)
 
-Target: `docs/index.html` — the GitHub Pages setup and flasher page for Headroom Mini.
+Target: `docs/index.html` — the GitHub Pages setup and flasher page for Yoyu.
 Mode: primarily **Operate** (a 3-step setup wizard) with a Persuade block bolted to the top. All 10 heuristics scored; none n/a.
 
 ## Design Health Score
@@ -21,7 +21,7 @@ Mode: primarily **Operate** (a 3-step setup wizard) with a Persuade block bolted
 | 2 | Match System / Real World | 3 | Strong plain language ("plug the board in", "BOOT/RESET"), undercut by `--pair`, `--pi http://<board-ip>:8080`, and `[LIVE]`/`[estimated]` leaking onto a page whose footer promises "no command line". |
 | 3 | User Control and Freedom | 2 | No "I already flashed, skip to step 3". Nothing says the flash is repeatable or non-destructive — at the single scariest click on the page. |
 | 4 | Consistency and Standards | 2 | `.note` carries four unrelated meanings (buy ad, hard requirement, prerequisite warning, advanced option) at identical visual weight. Emoji icons (🛒 ⚙️ ⚡) clash with the flat pixel-art mascot. Footer contradicts the body on "no command line". |
-| 5 | Error Prevention | 3 | Genuinely good — charge-only cable, browser/phone warning, BOOT/RESET, CLI-login note. Misses Windows SmartScreen, macOS Gatekeeper/`chmod`, guest-network/VPN, and the duplicate `headroom.local` 404 that TROUBLESHOOTING.md ranks top-three. |
+| 5 | Error Prevention | 3 | Genuinely good — charge-only cable, browser/phone warning, BOOT/RESET, CLI-login note. Misses Windows SmartScreen, macOS Gatekeeper/`chmod`, guest-network/VPN, and the duplicate `yoyu.local` 404 that TROUBLESHOOTING.md ranks top-three. |
 | 6 | Recognition Rather Than Recall | 2 | The board's IP "from step 2" must be memorized and carried into step 3's `<details>`, with no way to re-display it. The Claude Code CLI sign-in prerequisite is only revealed in step 3, after flashing. |
 | 7 | Flexibility and Efficiency | 1 | No OS detection across the three download tiles; no copy-to-clipboard for the `--pi` command; no skip-ahead for a returning user; no path at all for a phone visitor. Weakest heuristic on the page. |
 | 8 | Aesthetic and Minimalist Design | 2 | Card 3 stacks seven sibling blocks. Two `.note` blocks fire before instruction one. The primary button is unstyled while the secondary downloads are designed. |
@@ -143,7 +143,7 @@ Separately: the FTC affiliate disclosure sits in the 12px footer at 3.707:1, sev
 
 **Riley (deliberate stress tester)** — disables JS: the button sits there fully visible, clickable, inert, flanked by two red errors, no `<noscript>`. Reads the footer's "no VS Code, no command line," then finds `--pair`, `--pi`, `claude`, and `claude /usage` in the body — direct self-contradiction. Asks the question the page cannot answer: how do you pass `--pair` to a binary you were told to double-click? Follows the `--pair` note, sees no code, and only learns from TROUBLESHOOTING.md that a confirmation code was supposed to appear on the board. Runs a contrast check and finds links at 2.7:1, muted at 4.1:1, badges at 3.1:1.
 
-**Casey (distracted mobile user)** — taps the link on a phone and is **given no forward path whatsoever**: no copy-link, no QR, no mailto. The one element that sounds addressed to them, the "Setting up from a phone instead?" disclosure in card 2, is actively misleading — it describes joining `Headroom-Setup` on an *already-flashed* board, so Casey may spend minutes hunting for a Wi-Fi network that does not exist. At 390px the download row breaks 2 + 1: Windows and macOS at 151px each, **Linux orphaned alone on its own 312px row** — measured, and it persists from ~390px to ~520px. The footer's "Source & docs on GitHub" splits mid-phrase across two lines and the `·` separator strands. The "on Amazon" link fragments into a **17.1 × 20 px** hit sliver. Casey may tap a tile and download a Windows `.exe` onto a phone.
+**Casey (distracted mobile user)** — taps the link on a phone and is **given no forward path whatsoever**: no copy-link, no QR, no mailto. The one element that sounds addressed to them, the "Setting up from a phone instead?" disclosure in card 2, is actively misleading — it describes joining `Yoyu-Setup` on an *already-flashed* board, so Casey may spend minutes hunting for a Wi-Fi network that does not exist. At 390px the download row breaks 2 + 1: Windows and macOS at 151px each, **Linux orphaned alone on its own 312px row** — measured, and it persists from ~390px to ~520px. The footer's "Source & docs on GitHub" splits mid-phrase across two lines and the `·` separator strands. The "on Amazon" link fragments into a **17.1 × 20 px** hit sliver. Casey may tap a tile and download a Windows `.exe` onto a phone.
 
 ## Minor Observations
 

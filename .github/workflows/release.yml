@@ -3,7 +3,7 @@ name: Build companion binaries
 # Produces the double-click companion apps (no Python needed by end users).
 # Runs when you push a tag like v1.0.0, and attaches the binaries to the
 # GitHub Release so the device's setup page can link to them at
-# /releases/latest/download/HeadroomCompanion-<os>[.exe].
+# /releases/latest/download/YoyuCompanion-<os>[.exe].
 
 on:
   push:
@@ -21,20 +21,20 @@ jobs:
         include:
           - os: windows-latest
             ext: ".exe"
-            asset: HeadroomCompanion-windows.exe
-            cli_asset: HeadroomCompanion-cli-windows.exe
+            asset: YoyuCompanion-windows.exe
+            cli_asset: YoyuCompanion-cli-windows.exe
             gui_deps: ""
             tray_backend: pystray._win32
           - os: macos-latest
             ext: ""
-            asset: HeadroomCompanion-macos
-            cli_asset: HeadroomCompanion-cli-macos
+            asset: YoyuCompanion-macos
+            cli_asset: YoyuCompanion-cli-macos
             gui_deps: "pyobjc-framework-Cocoa"
             tray_backend: pystray._darwin
           - os: ubuntu-latest
             ext: ""
-            asset: HeadroomCompanion-linux
-            cli_asset: HeadroomCompanion-cli-linux
+            asset: YoyuCompanion-linux
+            cli_asset: YoyuCompanion-cli-linux
             gui_deps: "python-xlib"
             tray_backend: pystray._xorg
     runs-on: ${{ matrix.os }}
@@ -49,15 +49,15 @@ jobs:
         working-directory: companion
         shell: bash
         run: |
-          # HeadroomCompanion = the friendly tray app (shows a menubar/tray icon).
-          pyinstaller --onefile --name HeadroomCompanion --noconsole \
+          # YoyuCompanion = the friendly tray app (shows a menubar/tray icon).
+          pyinstaller --onefile --name YoyuCompanion --noconsole \
             --hidden-import "${{ matrix.tray_backend }}" \
             --collect-submodules PIL tray.py
-          # HeadroomCompanion-cli = the headless companion (servers / debugging).
-          pyinstaller --onefile --name HeadroomCompanion-cli companion.py
+          # YoyuCompanion-cli = the headless companion (servers / debugging).
+          pyinstaller --onefile --name YoyuCompanion-cli companion.py
           cd dist
-          mv "HeadroomCompanion${{ matrix.ext }}" "${{ matrix.asset }}"
-          mv "HeadroomCompanion-cli${{ matrix.ext }}" "${{ matrix.cli_asset }}"
+          mv "YoyuCompanion${{ matrix.ext }}" "${{ matrix.asset }}"
+          mv "YoyuCompanion-cli${{ matrix.ext }}" "${{ matrix.cli_asset }}"
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
@@ -192,8 +192,8 @@ jobs:
           for want in headroom-mini-app.bin headroom-mini-app.bin.sig \
                       headroom-mini-bootloader.bin headroom-mini-partitions.bin \
                       headroom-mini-boot_app0.bin headroom-mini-merged.bin \
-                      HeadroomCompanion-windows.exe HeadroomCompanion-macos \
-                      HeadroomCompanion-linux; do
+                      YoyuCompanion-windows.exe YoyuCompanion-macos \
+                      YoyuCompanion-linux; do
             if ! echo "$ASSETS" | grep -qx "$want"; then
               echo "::error::Release $TAG is missing asset: $want"
               MISSING=1

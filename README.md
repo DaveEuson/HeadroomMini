@@ -1,6 +1,6 @@
-# Headroom Mini
+# Yoyu よゆう
 
-A tiny desk gadget that shows your **Claude usage limits** at a glance — how
+*yoyū* — Japanese for **room to spare**. A tiny desk gadget that shows your **Claude usage limits** at a glance — how
 much you have left in each window, when it resets, and a phone alert when you're
 running low. No terminal, no menubar, no estimating.
 
@@ -11,9 +11,9 @@ Raspberry Pi, no Linux, no soldering.
 <p align="center">
   <img src="docs/img/meters.jpg"   width="30%" alt="Meters — session and weekly usage bars">
   <img src="docs/img/timer.jpg"    width="30%" alt="Timer — live countdown to the next reset">
-  <img src="docs/img/sprocket.jpg" width="30%" alt="Sprocket — the mascot reacting to headroom">
+  <img src="docs/img/sprocket.jpg" width="30%" alt="the kitsune — the mascot reacting to headroom">
 </p>
-<p align="center"><sub>Meters · live reset countdown · Sprocket — tap to cycle</sub></p>
+<p align="center"><sub>Meters · live reset countdown · the kitsune — tap to cycle</sub></p>
 
 ## Before you buy: you need Claude Code
 
@@ -44,7 +44,7 @@ Everything runs on the one ~$26 board — no Raspberry Pi, no soldering.
 
 No tools, no command line:
 
-1. **Flash it in your browser.** Open **https://daveeuson.github.io/HeadroomMini/**
+1. **Flash it in your browser.** Open **https://daveeuson.github.io/Yoyu/**
    in Chrome or Edge, plug the board in over USB-C, and click
    **Connect & Install**.
 2. **Set Wi-Fi in the same window** — it hands the board your network over the
@@ -105,7 +105,7 @@ Full guide: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md). The common one
   account your computer uses, and the two rotate each other's token. Use **push
   mode** (run the companion, no `--pair`) or pair a **spare account**.
 - **"Couldn't reach the board" / 404, or no pairing code** — usually two devices
-  answering to `headroom.local` (e.g. an old Pi still running). Turn off the one
+  answering to `yoyu.local` (e.g. an old Pi still running). Turn off the one
   you're not using, or point the companion straight at the board with
   `--pi http://<board-ip>:8080`.
 - **"Rate limited"** — more than one device polling the same account. Leave one
@@ -131,7 +131,7 @@ extension, open the `firmware/` folder, and hit **Upload**. Full runbook in
 ## The Raspberry Pi version
 
 The original, deluxe build — a Raspberry Pi Zero 2 W with a full web dashboard
-and the "Pip" mascot — lives in its own repo, **HeadroomZero**. This repo is the
+and the "Pip" mascot — lives in its own repo, **YoyuZero**. This repo is the
 self-contained ESP32 appliance.
 
 ## License

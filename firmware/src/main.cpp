@@ -1,9 +1,9 @@
-// Headroom Mini — Claude usage meters on a Waveshare ESP32-S3-Touch-LCD-2.
+// Yoyu — Claude usage meters on a Waveshare ESP32-S3-Touch-LCD-2.
 // Copyright (c) 2026 Dave Euson. Made with love in San Diego.
 //
-// v0 scope: join Wi-Fi (first boot: its own "Headroom-Setup" hotspot with a
+// v0 scope: join Wi-Fi (first boot: its own "Yoyu-Setup" hotspot with a
 // phone setup page, like the Pi version), then speak the same HTTP API as the
-// Pi tracker — GET /api/status with the "Headroom" discovery marker and
+// Pi tracker — GET /api/status with the "Yoyu" discovery marker and
 // POST /api/push — so the existing desktop companion feeds it with no changes.
 // Phase 2 (later): poll Anthropic's usage endpoint directly on-device.
 //
@@ -77,7 +77,7 @@ static Arduino_DataBus *bus =
 // rotation 2 = portrait 240x320 flipped 180° (USB-C connector at the top)
 static Arduino_GFX *gfx =
     new Arduino_ST7789(bus, LCD_RST, 2 /*rotation*/, true /*IPS*/, 240, 320);
-// Off-screen framebuffer (PSRAM) for the animated Sprocket screen: draw a whole
+// Off-screen framebuffer (PSRAM) for the animated kitsune screen: draw a whole
 // frame into RAM, then blit it in one pass so the animation never flickers.
 static Arduino_Canvas *mascotBuf = nullptr;
 
@@ -126,19 +126,67 @@ static const uint16_t C_WARN_T= RGB565(0x46, 0x3B, 0x1A);
 static const uint16_t C_CRIT  = RGB565(0xE0, 0x52, 0x52);
 static const uint16_t C_CRIT_T= RGB565(0x4A, 0x27, 0x27);
 
-// Sprocket, the mascot
-static const uint16_t C_SPRK  = RGB565(0x5F, 0x83, 0xA1);   // body
-static const uint16_t C_SPRK_D= RGB565(0x3F, 0x5F, 0x7A);   // shade
+// Yoyu, the kitsune
+static const uint16_t C_SPRK  = RGB565(0xC9, 0x60, 0x3F);   // fox fur
+static const uint16_t C_SPRK_D= RGB565(0x9E, 0x44, 0x29);   // ear + tail shade
 static const uint16_t C_OUT   = RGB565(0x1A, 0x18, 0x16);   // outline / features
 static const uint16_t C_FACE  = RGB565(0xFA, 0xF7, 0xEF);   // face screen
 
-// Sprocket's 11x11 pixel sprite, shared by the device screen and the web UI.
-// K=outline B=body W=face S=shade  '.'=transparent
-static const char *const SPROCKET_SPRITE[11] = {
-    "...K...K...",  "...B...B...",  "..KKKKKKK..",
-    ".KBBBBBBBK.",  ".KWWWWWWWK.",  ".KWWWWWWWK.",
-    ".KWWWWWWWK.",  ".KWWWWWWWK.",  ".KBSBBBSBK.",
-    ".KBBBBBBBK.",  "..KK...KK.."};
+static const int K_COLS = 18, K_ROWS = 15;
+static const int K_CELL = 13;   // px per cell at uiScale 1
+
+// The kitsune, drawn on a 18x15 cell grid shared by the device screen and
+// the web UI. K=outline B=fur W=markings S=shade  '.'=background
+static const char *const KITSUNE_SPRITE[15] = {
+    "..................", "..................", ".K.......K........",
+    ".KSK...KSK........", "KBSSK.KSSBK.......", "KBBBKKKBBBK.......",
+    "KBBBBBBBBBK.......", "KBBBBBBBBBK.......", ".KBBBBBBBK........",
+    "..KBWWWBK.........", "...KWWWK..........", ".KBBBBBBBK........",
+    ".KBBWWWBBK........", ".KBBWWWBBK........", "..KK...KK........."};
+
+// Tails are the gauge: one when headroom is nearly gone, three when there is
+// plenty. Each is a pre-rasterised arc leaving the same hip at its own angle,
+// with a ring of background cells around it -- two tails of the same colour
+// that touch read as one tail, which would make the count useless. Ordered
+// innermost first so drawing the first N gives a fan that opens outward.
+struct TailCell { uint8_t r, c; char ch; };
+static const TailCell TAIL_0[35] = {
+    {10,10,'.'},{10,11,'.'},{10,12,'.'},{10,13,'.'},{10,14,'.'},{11,15,'.'},
+    {11,16,'.'},{12,17,'.'},{13,17,'.'},{14,10,'.'},{14,11,'.'},{14,12,'.'},
+    {14,13,'.'},{14,14,'.'},{14,15,'.'},{14,16,'.'},{11,10,'S'},{11,11,'S'},
+    {11,12,'S'},{11,13,'S'},{11,14,'S'},{12,10,'S'},{12,11,'S'},{12,12,'S'},
+    {12,13,'S'},{12,14,'S'},{12,15,'W'},{12,16,'W'},{13,10,'S'},{13,11,'S'},
+    {13,12,'S'},{13,13,'S'},{13,14,'S'},{13,15,'W'},{13,16,'W'}};
+static const TailCell TAIL_1[48] = {
+    { 6,14,'.'},{ 6,15,'.'},{ 6,16,'.'},{ 7,12,'.'},{ 7,13,'.'},{ 7,17,'.'},
+    { 8,11,'.'},{ 8,17,'.'},{ 9, 9,'.'},{ 9,10,'.'},{ 9,17,'.'},{10, 8,'.'},
+    {10,15,'.'},{10,16,'.'},{11,14,'.'},{12,13,'.'},{13,12,'.'},{14,10,'.'},
+    {14,11,'.'},{ 7,14,'S'},{ 7,15,'W'},{ 7,16,'W'},{ 8,12,'S'},{ 8,13,'S'},
+    { 8,14,'S'},{ 8,15,'W'},{ 8,16,'W'},{ 9,11,'S'},{ 9,12,'S'},{ 9,13,'S'},
+    { 9,14,'S'},{ 9,15,'S'},{ 9,16,'W'},{10, 9,'S'},{10,10,'S'},{10,11,'S'},
+    {10,12,'S'},{10,13,'S'},{10,14,'S'},{11,10,'S'},{11,11,'S'},{11,12,'S'},
+    {11,13,'S'},{12,10,'S'},{12,11,'S'},{12,12,'S'},{13,10,'S'},{13,11,'S'}};
+static const TailCell TAIL_2[46] = {
+    { 1,13,'.'},{ 2,12,'.'},{ 2,14,'.'},{ 3,11,'.'},{ 3,15,'.'},{ 4,15,'.'},
+    { 5,14,'.'},{ 6,14,'.'},{ 7,13,'.'},{ 8,13,'.'},{ 9,12,'.'},{10,12,'.'},
+    {11,12,'.'},{12,12,'.'},{13,10,'.'},{13,11,'.'},{ 2,13,'W'},{ 3,12,'S'},
+    { 3,13,'W'},{ 3,14,'W'},{ 4,11,'S'},{ 4,12,'S'},{ 4,13,'W'},{ 4,14,'W'},
+    { 5,11,'S'},{ 5,12,'S'},{ 5,13,'S'},{ 6,11,'S'},{ 6,12,'S'},{ 6,13,'S'},
+    { 7,11,'S'},{ 7,12,'S'},{ 8,10,'S'},{ 8,11,'S'},{ 8,12,'S'},{ 9, 9,'S'},
+    { 9,10,'S'},{ 9,11,'S'},{10, 8,'S'},{10, 9,'S'},{10,10,'S'},{10,11,'S'},
+    {11,10,'S'},{11,11,'S'},{12,10,'S'},{12,11,'S'}};
+static const TailCell *const KITSUNE_TAILS[3] = {TAIL_0, TAIL_1, TAIL_2};
+static const uint8_t KITSUNE_TAIL_N[3] = {35, 48, 46};
+
+// The resting face, at whole-cell resolution. On the panel the features are
+// drawn as sub-cell rects by drawKitsuneAnim, because they have to change with
+// the mood; the SVG has no mood to show and gets this instead. Without it the
+// web avatar renders faceless, which is how it shipped the first time.
+static const TailCell KITSUNE_FACE[5] = {
+    {6, 2, 'K'}, {6, 7, 'K'},            // eyes
+    {9, 5, 'K'},                          // nose
+    {10, 4, 'K'}, {10, 6, 'K'},           // mouth
+};
 
 // ------------------------------------------------------------------- state
 
@@ -169,10 +217,10 @@ static DNSServer dns;
 static bool apMode = false;
 
 // Same defaults as the Pi build
-static const char *AP_SSID = "Headroom-Setup";
-static const char *AP_PSK  = "headroom";
+static const char *AP_SSID = "Yoyu-Setup";
+static const char *AP_PSK  = "yoyu";
 static const int   API_PORT = 8080;   // what the companion probes
-static const char *FW_VERSION = "1.5.1";
+static const char *FW_VERSION = "1.6.0";
 
 // Phase 2 — self-contained: poll Anthropic's usage endpoint directly, using an
 // OAuth login pasted once via /connect. Same contract the companion uses.
@@ -180,14 +228,17 @@ static const char *CLIENT_ID   = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 static const char *REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
 static const char *USAGE_URL   = "https://api.anthropic.com/api/oauth/usage";
 static const char *OAUTH_BETA  = "oauth-2025-04-20";
-static const char *UA          = "Headroom-Mini/1.5.1";
+static const char *UA          = "Yoyu/1.6.0";
 // OTA self-update (over-the-air from the GitHub release)
 static const char *RELEASES_API =
-    "https://api.github.com/repos/DaveEuson/HeadroomMini/releases/latest";
+    "https://api.github.com/repos/DaveEuson/Yoyu/releases/latest";
 static const char *APP_BIN_URL =
-    "https://github.com/DaveEuson/HeadroomMini/releases/latest/download/headroom-mini-app.bin";
+    // Asset filenames deliberately keep the old prefix: boards already in the
+    // field fetch these exact names, and renaming them turns every OTA into a
+    // 404 on hardware that can no longer be reached any other way.
+    "https://github.com/DaveEuson/Yoyu/releases/latest/download/headroom-mini-app.bin";
 static const char *APP_SIG_URL =
-    "https://github.com/DaveEuson/HeadroomMini/releases/latest/download/headroom-mini-app.bin.sig";
+    "https://github.com/DaveEuson/Yoyu/releases/latest/download/headroom-mini-app.bin.sig";
 static const unsigned long POLL_INTERVAL_MS = 5UL * 60UL * 1000UL;
 static unsigned long pollBackoffMs = 0;   // extra wait after a 429, exponential
 
@@ -212,11 +263,11 @@ static char      tzEnv[48]   = "EST5EDT,M3.2.0,M11.1.0";  // POSIX TZ, set via /
 static bool      clock24     = false; // false = 12-hour (3:45 PM), true = 24-hour
 static bool      nightDim    = true;  // ease the backlight down overnight
 static const uint8_t NIGHT_LEVEL = 40;
-static int       uiScreen    = 0;     // 0 meters 1 focus 2 history 3 sprocket
+static int       uiScreen    = 0;     // 0 meters 1 focus 2 history 3 kitsune
                                       // 4 timer 5 actions 6 projects 7 settings
 static const int UI_SCREENS  = 8;
 static const char *SCREEN_NAMES[UI_SCREENS] =
-    {"Meters", "Focus", "History", "Sprocket",
+    {"Meters", "Focus", "History", "Yoyu",
      "Timer", "Actions", "Projects", "Settings"};
 static uint8_t   screenMask  = 0xFF;  // bit i set = screen i is in the rotation
 // screenMask is one bit per screen in a uint8_t, and it is also what gets
@@ -278,7 +329,7 @@ static unsigned long lastActionPollMs = 0;   // last time a companion asked
 static time_t    timerResetAt = 0;    // reset time the Timer screen is counting to
 static bool      timerOut     = false; // that window is spent — we're counting a wait
 static int       mascotShownMood = -2; // mood the caption/screen is currently drawn for
-static int       mascotFrame  = 0;    // animation frame counter (Sprocket screen)
+static int       mascotFrame  = 0;    // animation frame counter (kitsune screen)
 static unsigned long lastActivityMs = 0;  // last time usage went UP (you're using Claude)
 static float     prevHeadlineUtil = -1;   // float, so a fractional-% climb still counts
 static const unsigned long ACTIVE_WINDOW_MS = 20UL * 60 * 1000;  // "active" if used within 20 min
@@ -297,7 +348,7 @@ static int       histCount = 0;       // valid samples so far (<= HIST_LEN)
 static int       histHead  = 0;       // ring write index
 static const unsigned long SAMPLE_INTERVAL_MS = 10UL * 60UL * 1000UL;  // 10 min
 
-// 10pm-7am local (once NTP has synced). Shared by night-dim and Sprocket.
+// 10pm-7am local (once NTP has synced). Shared by night-dim and the kitsune.
 static bool nightNow() {
   time_t now = time(nullptr);
   if (!timeSynced || now < 100000) return false;
@@ -403,7 +454,7 @@ static void drawLeft(const char *text, int x, int y, uint8_t size, uint16_t colo
 
 static void drawSplash(const char *line1, const char *line2) {
   gfx->fillScreen(C_BG);
-  drawCentered("HEADROOM", 130, 3, C_ACC);
+  drawCentered("YOYU", 130, 3, C_ACC);
   if (line1) drawCentered(line1, 170, 1, C_INK);
   if (line2) drawCentered(line2, 190, 1, C_MUTED);
   char vbuf[16];
@@ -500,7 +551,7 @@ static void drawMeters() {
         drawCentered("companion.py --pair", 212, 1, C_INK);
       }
       // Always show where this board is. Auto-discovery can land on the wrong
-      // device (another Headroom on the LAN answers first), and without the
+      // device (another Yoyu on the LAN answers first), and without the
       // address there's no way to point the companion at the right one.
       if (err && WiFi.status() == WL_CONNECTED) {
         snprintf(buf, sizeof(buf), "%s:%d",
@@ -674,8 +725,26 @@ static int headlineUtil() {
   return f < 0 ? -1 : (int)(f + 0.5f);
 }
 
+// The window with the least headroom left -- the one that actually stops you
+// working, and so the one the mascot reacts to. Deliberately separate from
+// headlineUtilF(), which prefers the 5-hour window because it feeds the history
+// graph: that has to stay on one series over time or the graph would jump every
+// time a different window became the fullest.
+static int tightestWindow() {
+  int idx = -1;
+  for (int i = 0; i < nWindows; i++)
+    if (idx < 0 || windows[i].utilization > windows[idx].utilization) idx = i;
+  return idx;
+}
+
+// % used of that window, or -1 with no data.
+static int mascotUtil() {
+  int i = tightestWindow();
+  return i < 0 ? -1 : (int)(windows[i].utilization + 0.5f);
+}
+
 // A window reads as "out" when its rounded percentage reaches 100% used — the
-// same rounding the meters print and Sprocket's "out of tokens" mood uses, so
+// same rounding the meters print and the kitsune's "out of tokens" mood uses, so
 // the three can never disagree about whether you've run out.
 static bool windowOut(const Window &w) {
   return (int)(w.utilization + 0.5f) >= 100;
@@ -746,7 +815,7 @@ static void drawHistory() {
   drawCentered(buf, gy + gh + 16, 2, C_INK);
 }
 
-// --- Sprocket's mood is driven by activity + headroom ---
+// --- the kitsune's mood is driven by activity + headroom ---
 // You're "active" if usage has climbed recently (you're burning tokens now).
 static bool mascotActive() {
   return lastActivityMs && (millis() - lastActivityMs) < ACTIVE_WINDOW_MS;
@@ -755,7 +824,7 @@ static bool mascotActive() {
 // dead when out, panic when low, party while you're actively using it, asleep
 // when idle, and a waiting face before any data arrives.
 static int mascotMoodNow() {
-  int u = headlineUtil();
+  int u = mascotUtil();
   if (u < 0) return 4;                    // 4 = waiting
   int left = 100 - u;
   if (left <= 0)  return 5;               // 5 = dead / out
@@ -774,14 +843,41 @@ static void noteUsageActivity() {
   }
 }
 
-// Draw the animated Sprocket for `mood` at animation `frame`. Repaints only the
+// How many tails to show. The kitsune is a gauge, not decoration, so this is
+// the headline window's remaining share bucketed into three states -- the same
+// number the meters print, said in a way you can read from across a desk.
+static int kitsuneTails() {
+  int u = mascotUtil();                   // % used, -1 when there's no data yet
+  if (u < 0) return 2;                    // unknown: sit in the middle
+  int left = 100 - u;
+  return left > 60 ? 3 : left > 25 ? 2 : 1;
+}
+
+// Draw the animated kitsune for `mood` at animation `frame`. Repaints only the
 // band above the caption, so the caption/version/badge are left intact and the
 // per-frame tick stays cheap. Each mood has its own motion.
-static void drawSprocketAnim(int mood, int frame) {
-  // The sprite is 11x11 cells: scale the cell, then centre it. Mapping each
-  // of the ~30 fillRects below individually would round each one separately
-  // and pull the pixel art out of alignment with itself.
-  const int S = 18 * uiScale, ox = (scrW - 11 * S) / 2, oy0 = mapY(44);
+// The cell size, fitted to the glass. Scale the cell once and centre the grid:
+// mapping each of the ~200 fillRects individually would round each separately
+// and pull the pixel art out of alignment with itself.
+//
+// Fitted to the panel width rather than multiplied by uiScale, which is the
+// bitmap-font step. The two agreed while the sprite was 11 cells wide; at 18
+// they don't. 18 x 13 x uiScale 2 is 468px of sprite on a 410px AMOLED, which
+// centres to a negative x and clips both flanks, and pushes the stat line under
+// the caption off the bottom of the screen.
+// Both axes, because either can be the tight one: a tall panel runs out of
+// width first, a wide one runs out of height. The vertical budget is design-row
+// 40 (where the sprite starts) to 258 -- far enough up that the caption at +12
+// and the two stat lines below it still land on the glass.
+static int kitsuneCell() {
+  int byW = (scrW - mapX(6)) / K_COLS;    // 6px of breathing room, scaled
+  int byH = mapY(218) / K_ROWS;
+  int s = byW < byH ? byW : byH;
+  return s < 1 ? 1 : s;                   // identity (13) on the 240px panel
+}
+
+static void drawKitsuneAnim(int mood, int frame) {
+  const int S = kitsuneCell(), ox = (scrW - K_COLS * S) / 2, oy0 = mapY(40);
 
   int bob = 0, shake = 0;
   if      (mood == 6) bob   = (frame % 4 < 2) ? -4 : 0;   // party: bounce
@@ -790,14 +886,29 @@ static void drawSprocketAnim(int mood, int frame) {
   else if (mood == 5) bob   = 4;                          // dead: slumped
   int oy = oy0 + bob, px = ox + shake;
 
-  uint16_t mc   = (mood == 6) ? C_ACC : (mood == 2 || mood == 5) ? C_CRIT : C_MUTED;
-  uint16_t ball = (mood == 5 || mood == 3) ? C_MUTED : mc;
-  if (mood == 6) ball = (frame % 3 == 0) ? C_ACC : (frame % 3 == 1) ? C_WARN : C_SPRK;
+  // The ear interiors are the fox's own shade unless the mood is worth
+  // shouting about; a permanently tinted ear just reads as a sticker.
+  uint16_t ear = C_SPRK_D;
+  if      (mood == 2) ear = C_CRIT;
+  else if (mood == 5) ear = C_MUTED;
+  else if (mood == 6) ear = (frame % 3 == 0) ? C_ACC
+                          : (frame % 3 == 1) ? C_WARN : C_SPRK;
 
-  for (int y = 0; y < 11; y++)
-    for (int x = 0; x < 11; x++) {
+  // Tails first: the body is opaque and sits in front of where they root, so
+  // painting them under it hides the join instead of drawing a seam.
+  int tails = kitsuneTails();
+  for (int t = 0; t < tails; t++)
+    for (int i = 0; i < KITSUNE_TAIL_N[t]; i++) {
+      const TailCell &tc = KITSUNE_TAILS[t][i];
+      uint16_t c = tc.ch == 'K' ? C_OUT : tc.ch == 'W' ? C_FACE
+                 : tc.ch == 'S' ? C_SPRK_D : C_BG;
+      gfx->fillRect(px + tc.c * S, oy + tc.r * S, S, S, c);
+    }
+
+  for (int y = 0; y < K_ROWS; y++)
+    for (int x = 0; x < K_COLS; x++) {
       uint16_t c;
-      switch (SPROCKET_SPRITE[y][x]) {
+      switch (KITSUNE_SPRITE[y][x]) {
         case 'K': c = C_OUT;    break;
         case 'W': c = C_FACE;   break;
         case 'B': c = C_SPRK;   break;
@@ -806,41 +917,55 @@ static void drawSprocketAnim(int mood, int frame) {
       }
       gfx->fillRect(px + x * S, oy + y * S, S, S, c);
     }
-  gfx->fillRect(px + 3 * S, oy + S, S, S, ball);   // antenna balls
-  gfx->fillRect(px + 7 * S, oy + S, S, S, ball);
+  gfx->fillRect(px + 2 * S, oy + 3 * S, S, S, ear);
+  gfx->fillRect(px + 8 * S, oy + 3 * S, S, S, ear);
 
-  int ey = oy + 5 * S, lx = px + 3 * S, rx = px + 7 * S;
-  int my = oy + 7 * S, mx = px + 4 * S;
+  // Eyes on row 6, muzzle on row 9 (the white markings). Cols 2 and 7 put the
+  // pair either side of the head's centre line at col 5.
+  int ey = oy + 6 * S, lx = px + 2 * S, rx = px + 7 * S;
+  int my = oy + 9 * S + S / 2, mx = px + 4 * S;
+  if (mood != 5) gfx->fillRect(px + 5 * S, oy + 9 * S, S, S / 2, C_OUT);   // nose
 
   if (mood == 3) {                                 // ASLEEP: shut eyes + rising Zzz
     gfx->fillRect(lx, ey + S / 2, S, S / 4, C_OUT);
     gfx->fillRect(rx, ey + S / 2, S, S / 4, C_OUT);
-    gfx->fillRect(mx + S, my + S / 3, S, S / 3, C_OUT);
-    int n = 1 + (frame % 3);                       // z … z z … z z z …
+    gfx->fillRect(mx + S, my, S, S / 4, C_OUT);
+    int n = 1 + (frame % 3);                       // z .. z z .. z z z ..
     gfx->setTextColor(C_MUTED);
     gfx->setTextSize(uiScale);
-    for (int i = 0; i < n; i++) {
-      gfx->setCursor(px + 9 * S + i * 6, oy + S - i * 9);
+    for (int i = 0; i < n; i++) {                  // above the head: the space
+      gfx->setCursor(px + (4 + i) * S, oy + S - i * 9);   // beside it is tails
       gfx->print("z");
     }
-  } else if (mood == 6) {                          // PARTY: grin + falling confetti
-    gfx->fillRect(lx, ey, S, S, C_OUT);
-    gfx->fillRect(rx, ey, S, S, C_OUT);
-    gfx->fillRect(mx, my + S / 3, 3 * S, S / 2, C_OUT);
+  } else if (mood == 6) {                          // PARTY: happy arcs + open grin
+    // Curved-up eyes, not blocks. A square eye over a wide mouth reads as a
+    // stare rather than a smile, which is how the previous grin went wrong.
+    for (int e = 0; e < 2; e++) {
+      int bx = e ? rx : lx;
+      gfx->fillRect(bx,             ey + S / 2, S / 3, S / 4, C_OUT);
+      gfx->fillRect(bx + S / 3,     ey + S / 5, S / 3, S / 4, C_OUT);
+      gfx->fillRect(bx + 2 * S / 3, ey + S / 2, S / 3, S / 4, C_OUT);
+    }
+    gfx->fillRect(mx, my, 3 * S, S / 2, C_OUT);
+    gfx->fillRect(mx + S, my + S / 5, S, S / 5, C_CRIT);           // tongue
+    // Design-space coords like everything else -- raw pixels here bunched the
+    // confetti into the top-left corner of a larger panel. The 200 keeps the
+    // lowest piece above the caption instead of clipping its top row.
     for (int i = 0; i < 9; i++) {
-      int cxp = 12 + (i * 71) % 214;
-      int cyp = 30 + ((i * 37 + frame * 12) % 216);
+      int cxp = mapX(12 + (i * 71) % 214);
+      int cyp = mapY(30 + ((i * 37 + frame * 12) % 200));
       uint16_t cc = (i % 3 == 0) ? C_ACC : (i % 3 == 1) ? C_WARN : C_SPRK;
-      gfx->fillRect(cxp, cyp, 5, 5, cc);
+      gfx->fillRect(cxp, cyp, mapX(5), mapY(5), cc);
     }
   } else if (mood == 2) {                          // PANIC: wide eyes + dripping sweat
     gfx->fillRect(lx, ey - S / 4, S, S + S / 4, C_FACE);
     gfx->fillRect(rx, ey - S / 4, S, S + S / 4, C_FACE);
     gfx->fillRect(lx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
     gfx->fillRect(rx + S / 3, ey + S / 4, S / 3, S / 3, C_OUT);
-    gfx->fillRect(mx + S, my, S, S, C_OUT);
+    gfx->fillRect(mx + S, my - S / 4, S, S / 2, C_OUT);
     int dy = (frame % 4) * 7;
-    gfx->fillRect(rx + S + S / 4, ey - S / 3 + dy, S / 3, S / 2, C_SPRK);
+    // Sweat has to stay pale: on a red fox a coloured droplet reads as blood.
+    gfx->fillRect(rx + S + S / 4, ey - S / 3 + dy, S / 3, S / 2, C_FACE);
   } else if (mood == 5) {                          // DEAD: X eyes, KO mouth (still)
     for (int t = -1; t <= 1; t++) {
       gfx->drawLine(lx, ey + t, lx + S - 1, ey + S - 1 + t, C_OUT);
@@ -848,15 +973,20 @@ static void drawSprocketAnim(int mood, int frame) {
       gfx->drawLine(rx, ey + t, rx + S - 1, ey + S - 1 + t, C_OUT);
       gfx->drawLine(rx + S - 1, ey + t, rx, ey + S - 1 + t, C_OUT);
     }
-    gfx->fillRect(mx + S / 2, my + S / 2, 2 * S, S / 5, C_OUT);
-  } else {                                         // WAITING: open eyes, flat mouth
-    gfx->fillRect(lx, ey, S, S, C_OUT);
-    gfx->fillRect(rx, ey, S, S, C_OUT);
-    gfx->fillRect(mx, my + S / 2, 3 * S, S / 5, C_OUT);
+    gfx->fillRect(mx + S / 2, my, 2 * S, S / 5, C_OUT);
+  } else {                                         // WAITING: narrow fox eyes
+    // Stepped, not square: the slant is most of what separates a fox from a
+    // round-eyed cartoon animal at this size, and it costs two rects an eye.
+    for (int e = 0; e < 2; e++) {
+      int bx = e ? rx : lx, d = e ? -1 : 1;
+      gfx->fillRect(bx, ey + S / 3, 2 * S / 3, S / 3, C_OUT);
+      gfx->fillRect(bx + (d > 0 ? S / 2 : -S / 6), ey + S / 8, 2 * S / 3, S / 3, C_OUT);
+    }
+    gfx->fillRect(mx + S / 2, my, 2 * S, S / 5, C_OUT);
   }
 }
 
-// Full Sprocket screen, rendered into the off-screen buffer and blitted in one
+// Full kitsune screen, rendered into the off-screen buffer and blitted in one
 // pass (no flicker). Draw helpers all use the global `gfx`, so we point it at
 // the RAM canvas for the duration, then flush. Every animation frame is a full
 // redraw of this whole screen into the buffer.
@@ -887,14 +1017,15 @@ static void drawMascot() {
                    : mood == 3 ? "resting - no usage" : "waiting for usage";
   // Caption sits under the sprite, so it follows the scaled cell size rather
   // than a design-space constant -- otherwise it overlaps on a larger panel.
-  const int S = 18 * uiScale;
-  int cy = (mapY(44) + 11 * S + mapY(14)) * REF_H / scrH;   // back to design space
+  const int S = kitsuneCell();
+  int cy = (mapY(40) + K_ROWS * S + mapY(12)) * REF_H / scrH;  // back to design space
   drawCentered(word, cy, 2, mc);
 
-  // Stat line: the fullest window's %, plus its reset countdown.
-  int idx = -1;
-  for (int i = 0; i < nWindows; i++)
-    if (idx < 0 || windows[i].utilization > windows[idx].utilization) idx = i;
+  // Stat line: the same window the mascot is reacting to, plus its countdown.
+  // These used to be picked separately -- the mascot went by the 5-hour window
+  // and this line by the fullest -- so the screen could read "on a roll!" over
+  // three tails with "Weekly 96% used" printed directly beneath it.
+  int idx = tightestWindow();
   if (idx >= 0) {
     int u = (int)(windows[idx].utilization + 0.5f);
     int shown = showUsed ? u : 100 - u;
@@ -905,7 +1036,7 @@ static void drawMascot() {
     fmtCountdown(windows[idx].resets_at, buf, sizeof(buf));
     if (buf[0]) drawCentered(buf, cy + 42, 1, C_MUTED);
   }
-  drawSprocketAnim(mood, mascotFrame);
+  drawKitsuneAnim(mood, mascotFrame);
 
   if (mascotBuf) { gfx = real; mascotBuf->flush(); }   // blit the finished frame
 }
@@ -1296,11 +1427,11 @@ static void checkAlerts() {
     if (used >= alertPct && !st->over) {
       st->over = true;
       snprintf(body, sizeof(body), "%s at %d%% used", w.label, used);
-      sendAlert("Headroom", body);
+      sendAlert("Yoyu", body);
     } else if (used < alertPct - 10 && st->over) {
       st->over = false;
       snprintf(body, sizeof(body), "%s recovered (%d%% used)", w.label, used);
-      sendAlert("Headroom", body);
+      sendAlert("Yoyu", body);
     }
   }
 }
@@ -1376,7 +1507,7 @@ static String adminTokenField() {
 
 static void handleStatus() {
   JsonDocument doc;
-  doc["app"] = "Headroom";        // discovery marker the companion looks for
+  doc["app"] = "Yoyu";        // discovery marker the companion looks for
   doc["mini"] = true;
   // What this board is actually running. The release checklist asks you to
   // confirm an OTA "reboots on the new version", and without this that can only
@@ -1488,7 +1619,7 @@ static void handlePush() {
 static const char PORTAL_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Headroom Wi-Fi setup</title>
+<title>Yoyu Wi-Fi setup</title>
 <style>body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:24px 18px;margin:0}
 .card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;padding:16px;max-width:420px;margin:0 auto}
 h2{margin:.2rem 0 .6rem}p{margin:.4rem 0}
@@ -1502,7 +1633,7 @@ button{display:block;width:100%;background:#d97757;color:#fff;font-weight:600;fo
 .row button{width:auto;padding:8px 12px;font-size:.9rem;background:#e9e6dc;color:#3d3929}
 .muted{color:#6b6759;font-size:.9rem}</style>
 </head><body><div class="card">
-<h2>Connect Headroom to Wi-Fi</h2>
+<h2>Connect Yoyu to Wi-Fi</h2>
 <div class="row"><strong>Pick your network</strong>
 <button type="button" id="rescan">Rescan</button></div>
 <div id="list" class="muted">Scanning&hellip;</div>
@@ -1567,7 +1698,7 @@ static void handleWifiSave() {
   prefs.putString("psk", pass);
   prefs.end();
   server->send(200, "text/html",
-               "<h2>Saved — rebooting.</h2><p>Headroom will join your network."
+               "<h2>Saved — rebooting.</h2><p>Yoyu will join your network."
                " Watch its screen for the address.</p>");
   delay(1200);
   ESP.restart();
@@ -1668,7 +1799,7 @@ static void improvConnect(const char *ssid, const char *pass) {
   drawCentered(ssid, 158, 1, C_MUTED);
 
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname("headroom");
+  WiFi.setHostname("yoyu");
   WiFi.begin(ssid, pass);
   unsigned long t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) delay(200);
@@ -1702,7 +1833,7 @@ static void improvDispatch() {
       break;
     }
     case improv::C_REQUEST_INFO: {
-      const char *info[4] = {"Headroom Mini", FW_VERSION, "ESP32-S3", "Headroom"};
+      const char *info[4] = {"Yoyu", FW_VERSION, "ESP32-S3", "Yoyu"};
       improvSendResult(improv::C_REQUEST_INFO, info, 4);
       break;
     }
@@ -1751,6 +1882,9 @@ static void improvPoll() {
 // ------------------------------------------- Phase 2: on-device usage polling
 
 static void loadCreds() {
+  // NVS namespace stays "headroom" forever. It is invisible to users, and
+  // renaming it would silently drop every board's Wi-Fi, login, alerts and
+  // screen settings the moment it took the update.
   prefs.begin("headroom", true);
   accessTok  = prefs.getString("atok", "");
   refreshTok = prefs.getString("rtok", "");
@@ -2066,7 +2200,7 @@ static void drawUpdateProgress(int pct) {
   if (pct == last) return;
   last = pct;
   gfx->fillScreen(C_BG);
-  drawCentered("Updating Headroom", 110, 2, C_INK);
+  drawCentered("Updating Yoyu", 110, 2, C_INK);
   char b[8];
   snprintf(b, sizeof(b), "%d%%", pct);
   drawCentered(b, 150, 4, C_ACC);
@@ -2174,7 +2308,7 @@ static void handleUpdatePage() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom - update</title><style>"
+      "<title>Yoyu - update</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:16px;max-width:460px;margin:0 auto}h2{margin:.2rem 0 .6rem}"
@@ -2242,7 +2376,7 @@ static void handleConnectPage() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom - connect account</title><style>"
+      "<title>Yoyu - connect account</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:16px;max-width:520px;margin:0 auto}h2{margin:.2rem 0 .6rem}"
@@ -2423,7 +2557,7 @@ static void handleAlertsPage() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom - phone alerts</title><style>"
+      "<title>Yoyu - phone alerts</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:16px;max-width:520px;margin:0 auto}h2{margin:.2rem 0 .6rem}label{font-size:.9rem}"
@@ -2441,7 +2575,7 @@ static void handleAlertsPage() {
       "<label>ntfy topic</label>"
       "<input name=ntfy value='");
   s += htmlEscape(ntfyTopic);
-  s += F("' placeholder='e.g. headroom-dave-9f3'>"
+  s += F("' placeholder='e.g. yoyu-dave-9f3'>"
          "<label>Alert at what % used?</label>"
          "<input name=pct type=number min=50 max=100 value='");
   s += pct;
@@ -2485,7 +2619,7 @@ static void handleAlertsTest() {
                  "<p>Set a topic or keys first. <a href=/alerts>back</a></p>");
     return;
   }
-  sendAlert("Headroom", "Test alert - notifications are working.");
+  sendAlert("Yoyu", "Test alert - notifications are working.");
   server->send(200, "text/html",
                "<p>Sent - check your phone. <a href=/alerts>back</a></p>");
 }
@@ -2513,7 +2647,7 @@ static void handleSettingsPage() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom - settings</title><style>"
+      "<title>Yoyu - settings</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:16px;max-width:520px;margin:0 auto}h2{margin:.2rem 0 .6rem}label{font-size:.9rem}"
@@ -2645,20 +2779,41 @@ static void handleSettingsSave() {
 }
 
 // Styled landing page: status + how to feed it (companion / pair), links.
-// Sprocket as inline SVG for the web UI, from the same sprite the screen draws.
-static String sprocketSvg(int px) {
-  String s = "<svg width="; s += px; s += " height="; s += px;
-  s += " viewBox='0 0 11 11' shape-rendering=crispEdges style='display:block'>";
-  const char *fill;
-  for (int y = 0; y < 11; y++)
-    for (int x = 0; x < 11; x++) {
-      switch (SPROCKET_SPRITE[y][x]) {
-        case 'K': fill = "#1A1816"; break;
-        case 'B': fill = "#5F83A1"; break;
-        case 'W': fill = "#FAF7EF"; break;
-        case 'S': fill = "#3F5F7A"; break;
-        default:  continue;
-      }
+// The kitsune as inline SVG for the web UI, from the same sprite the screen
+// draws -- including the live tail count, so the page and the panel never
+// disagree about how much headroom is left.
+static const char *kitsuneFill(char ch) {
+  switch (ch) {
+    case 'K': return "#1A1816";
+    case 'B': return "#C9603F";
+    case 'W': return "#FAF7EF";
+    case 'S': return "#9E4429";
+  }
+  return nullptr;
+}
+
+static String kitsuneSvg(int px) {
+  // Compose onto a scratch grid rather than emitting the sprite and then the
+  // tails: the tails carry background cells that punch the gaps between them,
+  // and a background <rect> over a transparent page would show as a dark patch.
+  char grid[K_ROWS][K_COLS];
+  memset(grid, '.', sizeof(grid));
+  int tails = kitsuneTails();
+  for (int t = 0; t < tails; t++)
+    for (int i = 0; i < KITSUNE_TAIL_N[t]; i++) {
+      const TailCell &tc = KITSUNE_TAILS[t][i];
+      grid[tc.r][tc.c] = tc.ch;
+    }
+  for (int y = 0; y < K_ROWS; y++)
+    for (int x = 0; x < K_COLS; x++)
+      if (KITSUNE_SPRITE[y][x] != '.') grid[y][x] = KITSUNE_SPRITE[y][x];
+  for (const TailCell &f : KITSUNE_FACE) grid[f.r][f.c] = f.ch;
+  String s = "<svg width="; s += px; s += " height="; s += (px * K_ROWS) / K_COLS;
+  s += " viewBox='0 0 18 15' shape-rendering=crispEdges style='display:block'>";
+  for (int y = 0; y < K_ROWS; y++)
+    for (int x = 0; x < K_COLS; x++) {
+      const char *fill = kitsuneFill(grid[y][x]);
+      if (!fill) continue;
       s += "<rect x="; s += x; s += " y="; s += y;
       s += " width=1 height=1 fill='"; s += fill; s += "'/>";
     }
@@ -2674,7 +2829,7 @@ static void handleRoot() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Headroom Mini</title><style>"
+      "<title>Yoyu \u3088\u3086\u3046</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:18px;max-width:520px;margin:0 auto 14px}h1{margin:.1rem 0}"
@@ -2685,17 +2840,23 @@ static void handleRoot() {
       "a.btn{display:inline-block;background:#d97757;color:#fff;text-decoration:none;"
       "font-weight:600;padding:11px 17px;border-radius:10px;margin:6px 8px 0 0}"
       ".muted{color:#6b6759;font-size:.9rem}summary{cursor:pointer}"
-      ".ava{background:#262624;border-radius:12px;padding:7px;flex:none}</style></head><body>"
+      ".ava{background:#262624;border-radius:12px;padding:7px;flex:none}"
+      // Same lockup as the setup page. Every page the board serves declares
+      // utf-8, so the kana are safe here -- unlike the panel, whose bitmap
+      // font is ASCII only and would draw them as blanks.
+      ".jp{font-size:.6em;color:#6b6759;font-weight:400;margin-left:.3em}</style>"
+      "</head><body>"
       "<div class=card style='display:flex;align-items:center;gap:14px'>"
       "<div class=ava>");
-  s += sprocketSvg(52);
-  s += F("</div><div><h1 style='margin:0 0 5px'>Headroom Mini</h1><span class=pill>");
+  s += kitsuneSvg(52);
+  s += F("</div><div><h1 style='margin:0 0 5px'>Yoyu"
+         "<span class=jp lang=ja>\u3088\u3086\u3046</span></h1><span class=pill>");
   s += st;
   s += F("</span></div></div><div class=card><h3>See your Claude usage</h3><ol>"
          "<li><b>Download the companion app</b> and open it.</li>"
          "<li>That's it &mdash; it finds this board on your network and shows "
          "your usage. It also starts with your computer so it stays live.</li>"
-         "</ol><p><a class=btn href='https://daveeuson.github.io/HeadroomMini/'>"
+         "</ol><p><a class=btn href='https://daveeuson.github.io/Yoyu/'>"
          "Get the companion app</a></p>"
          "<p class=muted>No typing, no address to enter.</p></div>"
          "<div class=card><details><summary><b>Advanced:</b> run without your "
@@ -2703,7 +2864,7 @@ static void handleRoot() {
          "<p>Normally you just leave the companion running (above) &mdash; that's "
          "the recommended setup. If you'd rather the board keep updating with your "
          "computer <i>off</i>, pair it once and it polls Anthropic itself:</p>"
-         "<p><code>HeadroomCompanion --pair</code></p>"
+         "<p><code>YoyuCompanion --pair</code></p>"
          "<p class=muted>(finds this board automatically. From source: "
          "<code>python companion.py --pair</code>.)</p>"
          "<p class=muted style='color:#c2410c'><b>Use a spare Claude account for "
@@ -2730,7 +2891,7 @@ static void handleRoot() {
   s += ip;
   s += ":";
   s += API_PORT;
-  s += F(" &middot; headroom.local:8080</p>"
+  s += F(" &middot; yoyu.local:8080</p>"
          "<p class=muted style='text-align:center;font-size:.78rem;margin:2px 0 8px'>"
          "Made by Dave Euson with <span style='color:#d97757'>&hearts;</span> "
          "in San Diego &middot; &copy; 2026 Dave Euson</p>"
@@ -3010,7 +3171,7 @@ static void startApi() {
   const char *watch[] = {"X-Push-Token", "X-Pair-Nonce", "X-Pair-Mac"};
   server->collectHeaders(watch, 3);
   server->begin();
-  MDNS.begin("headroom");
+  MDNS.begin("yoyu");
   MDNS.addService("http", "tcp", API_PORT);
 }
 
@@ -3037,7 +3198,7 @@ void setup() {
 
   drawSplash("joining Wi-Fi...", ssid.c_str());
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname("headroom");
+  WiFi.setHostname("yoyu");
   WiFi.begin(ssid.c_str(), psk.c_str());
   unsigned long t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 30000) delay(250);
@@ -3094,7 +3255,7 @@ void loop() {
   static bool pairShown = false;
   if (pairingActive()) pairShown = true;
   else if (pairShown) { pairShown = false; if (!screenOff) drawScreen(); }
-  // Sprocket animates while his screen is up: advance a frame and redraw the
+  // The kitsune animates while its screen is up: advance a frame and redraw the
   // whole screen into the off-screen buffer (drawMascot blits it in one pass,
   // so there's no flicker).
   static unsigned long lastAnim = 0;

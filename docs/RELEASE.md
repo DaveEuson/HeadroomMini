@@ -1,6 +1,6 @@
 # Release checklist
 
-How to cut a Headroom release. Tags drive everything: pushing `vX.Y.Z` builds
+How to cut a Yoyu release. Tags drive everything: pushing `vX.Y.Z` builds
 the companion apps **and** the Mini firmware image and attaches them to a
 GitHub Release; the setup page + companion download links always point at
 `releases/latest`.
@@ -10,7 +10,7 @@ GitHub Release; the setup page + companion download links always point at
 | Workflow | Trigger | Produces |
 |---|---|---|
 | `firmware.yml` | push/PR touching `firmware/**` | compile-check + firmware artifacts (CI gate) |
-| `release.yml` | push tag `v*` | `HeadroomCompanion-{windows.exe,macos,linux}` + `headroom-mini-merged.bin` + the signed OTA `headroom-mini-app.bin.sig`, attached to the Release |
+| `release.yml` | push tag `v*` | `YoyuCompanion-{windows.exe,macos,linux}` + `headroom-mini-merged.bin` + the signed OTA `headroom-mini-app.bin.sig`, attached to the Release |
 | `pages.yml` | push to `main` touching `docs/**`, **and after `release.yml` completes** | deploys the setup/flasher page to GitHub Pages, bundling `releases/latest`'s firmware same-origin |
 
 `pages.yml` is the only workflow that deploys Pages. It also refuses to publish
@@ -19,9 +19,9 @@ the page serving the previous version because two workflows deployed the site
 from two different sources and the stale one landed last, with both runs green.
 
 Fixed URLs the site depends on (resolve once a Release exists):
-- Flasher image: `https://github.com/DaveEuson/HeadroomMini/releases/latest/download/headroom-mini-merged.bin`
-- Companion: `.../releases/latest/download/HeadroomCompanion-{windows.exe,macos,linux}`
-- Setup page: `https://daveeuson.github.io/HeadroomMini/`
+- Flasher image: `https://github.com/DaveEuson/Yoyu/releases/latest/download/headroom-mini-merged.bin`
+- Companion: `.../releases/latest/download/YoyuCompanion-{windows.exe,macos,linux}`
+- Setup page: `https://daveeuson.github.io/Yoyu/`
 
 ## One-time setup (first release only)
 
@@ -69,7 +69,7 @@ Fixed URLs the site depends on (resolve once a Release exists):
        it): `git tag -d v1.0.0 && git push origin :refs/tags/v1.0.0`, then
        re-create and push as above.
 6. [ ] **Watch `release.yml` go green** and confirm the Release has the three
-       `HeadroomCompanion-*` apps plus the firmware images
+       `YoyuCompanion-*` apps plus the firmware images
        (`headroom-mini-bootloader/partitions/boot_app0/app.bin` for the flasher,
        and `headroom-mini-merged.bin` for esptool users).
 7. [ ] **Apply the notes.** `release.yml` publishes the release with an empty
@@ -79,13 +79,13 @@ Fixed URLs the site depends on (resolve once a Release exists):
        gh release edit v1.0.0 --notes-file docs/release-notes/v1.0.0.md
        ```
 8. [ ] **Smoke test the retail path** in Chrome/Edge:
-       - Open `https://daveeuson.github.io/HeadroomMini/`, click **Connect &
+       - Open `https://daveeuson.github.io/Yoyu/`, click **Connect &
          Install**, flash a board.
        - Same window → **Connect to Wi-Fi** (Improv) → board joins.
        - Open `http://<board-ip>:8080` → styled landing page loads.
        - Download a companion binary from the page and confirm it feeds the
          board (`--pi`, or auto-discovered).
-       - **Pair (self-contained):** `HeadroomCompanion --pair` (auto-finds the
+       - **Pair (self-contained):** `YoyuCompanion --pair` (auto-finds the
          board) → status flips to "Running self-contained" and meters update
          with no companion running. (`/connect` manual paste is the fallback.)
        - `/alerts` → set an ntfy topic → **Send test alert** lands on a phone.
@@ -99,9 +99,9 @@ Fixed URLs the site depends on (resolve once a Release exists):
 ## Release notes template
 
 ```
-## HeadroomMini v1.0.0
+## Yoyu v1.0.0
 
-### Headroom Mini (ESP32-S3) — first full firmware
+### Yoyu (ESP32-S3) — first full firmware
 - Browser flasher (ESP Web Tools) + Wi-Fi over USB (Improv) — no VS Code/CLI.
 - Self-contained on-device usage polling — pair it once with the companion
   (`--pair`), no computer needed afterward; manual `/connect` paste as fallback.

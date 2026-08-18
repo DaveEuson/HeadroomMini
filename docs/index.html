@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Headroom Mini — Setup</title>
-<meta name="description" content="Flash and set up your Headroom Mini in the browser — no VS Code, no command line.">
+<title>Yoyu よゆう — Setup</title>
+<meta name="description" content="Flash and set up your Yoyu in the browser — no VS Code, no command line.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://daveeuson.github.io/HeadroomMini/">
-<meta property="og:title" content="Headroom Mini — Setup">
+<meta property="og:url" content="https://daveeuson.github.io/Yoyu/">
+<meta property="og:title" content="Yoyu — Setup">
 <meta property="og:description" content="Your Claude usage, on your desk. Flash it in the browser — no VS Code, no command line.">
-<meta property="og:image" content="https://daveeuson.github.io/HeadroomMini/img/meters.jpg">
-<meta property="og:image:alt" content="Headroom Mini on a desk, showing session and weekly usage meters.">
+<meta property="og:image" content="https://daveeuson.github.io/Yoyu/img/meters.jpg">
+<meta property="og:image:alt" content="Yoyu on a desk, showing session and weekly usage meters.">
 <meta name="twitter:card" content="summary_large_image">
 <noscript><style>
   /* Without JS the element never upgrades, so the "Starting the flasher…"
@@ -40,6 +40,10 @@
   main{max-width:640px;margin:0 auto}
   header{text-align:center;margin-bottom:28px}
   h1{font-size:2rem;margin:.2rem 0}
+  /* The kana sit beside the name, not under it: they are the same word,
+     not a translation of it. Smaller and muted so the lockup still reads
+     as one mark to someone who cannot read them. */
+  h1 .jp{font-size:.62em;color:var(--muted);font-weight:400;margin-left:.34em;letter-spacing:.04em}
   .tag{color:var(--muted);font-size:1.02rem;margin:.2rem 0}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
     padding:22px 20px;margin:16px 0;box-shadow:0 1px 2px rgba(61,57,41,.05)}
@@ -166,9 +170,10 @@
 <body>
 <main>
   <header>
-    <svg width="72" height="72" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" role="img" aria-label="Sprocket, the Headroom Mini mascot" style="margin:0 auto 6px;display:block"><rect x="24" y="0" width="8" height="8" fill="#1A1816"/><rect x="56" y="0" width="8" height="8" fill="#1A1816"/><rect x="24" y="8" width="8" height="8" fill="#5F83A1"/><rect x="56" y="8" width="8" height="8" fill="#5F83A1"/><rect x="16" y="16" width="8" height="8" fill="#1A1816"/><rect x="24" y="16" width="8" height="8" fill="#1A1816"/><rect x="32" y="16" width="8" height="8" fill="#1A1816"/><rect x="40" y="16" width="8" height="8" fill="#1A1816"/><rect x="48" y="16" width="8" height="8" fill="#1A1816"/><rect x="56" y="16" width="8" height="8" fill="#1A1816"/><rect x="64" y="16" width="8" height="8" fill="#1A1816"/><rect x="8" y="24" width="8" height="8" fill="#1A1816"/><rect x="16" y="24" width="8" height="8" fill="#5F83A1"/><rect x="24" y="24" width="8" height="8" fill="#5F83A1"/><rect x="32" y="24" width="8" height="8" fill="#5F83A1"/><rect x="40" y="24" width="8" height="8" fill="#5F83A1"/><rect x="48" y="24" width="8" height="8" fill="#5F83A1"/><rect x="56" y="24" width="8" height="8" fill="#5F83A1"/><rect x="64" y="24" width="8" height="8" fill="#5F83A1"/><rect x="72" y="24" width="8" height="8" fill="#1A1816"/><rect x="8" y="32" width="8" height="8" fill="#1A1816"/><rect x="16" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="32" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="40" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="48" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="56" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="64" y="32" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="32" width="8" height="8" fill="#1A1816"/><rect x="8" y="40" width="8" height="8" fill="#1A1816"/><rect x="16" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="40" width="8" height="8" fill="#1A1816"/><rect x="32" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="40" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="48" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="56" y="40" width="8" height="8" fill="#1A1816"/><rect x="64" y="40" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="40" width="8" height="8" fill="#1A1816"/><rect x="8" y="48" width="8" height="8" fill="#1A1816"/><rect x="16" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="32" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="40" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="48" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="56" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="64" y="48" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="48" width="8" height="8" fill="#1A1816"/><rect x="8" y="56" width="8" height="8" fill="#1A1816"/><rect x="16" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="24" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="32" y="56" width="8" height="8" fill="#1A1816"/><rect x="40" y="56" width="8" height="8" fill="#1A1816"/><rect x="48" y="56" width="8" height="8" fill="#1A1816"/><rect x="56" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="64" y="56" width="8" height="8" fill="#FAF7EF"/><rect x="72" y="56" width="8" height="8" fill="#1A1816"/><rect x="8" y="64" width="8" height="8" fill="#1A1816"/><rect x="16" y="64" width="8" height="8" fill="#5F83A1"/><rect x="24" y="64" width="8" height="8" fill="#3F5F7A"/><rect x="32" y="64" width="8" height="8" fill="#5F83A1"/><rect x="40" y="64" width="8" height="8" fill="#5F83A1"/><rect x="48" y="64" width="8" height="8" fill="#5F83A1"/><rect x="56" y="64" width="8" height="8" fill="#3F5F7A"/><rect x="64" y="64" width="8" height="8" fill="#5F83A1"/><rect x="72" y="64" width="8" height="8" fill="#1A1816"/><rect x="8" y="72" width="8" height="8" fill="#1A1816"/><rect x="16" y="72" width="8" height="8" fill="#5F83A1"/><rect x="24" y="72" width="8" height="8" fill="#5F83A1"/><rect x="32" y="72" width="8" height="8" fill="#5F83A1"/><rect x="40" y="72" width="8" height="8" fill="#5F83A1"/><rect x="48" y="72" width="8" height="8" fill="#5F83A1"/><rect x="56" y="72" width="8" height="8" fill="#5F83A1"/><rect x="64" y="72" width="8" height="8" fill="#5F83A1"/><rect x="72" y="72" width="8" height="8" fill="#1A1816"/><rect x="16" y="80" width="8" height="8" fill="#1A1816"/><rect x="24" y="80" width="8" height="8" fill="#1A1816"/><rect x="56" y="80" width="8" height="8" fill="#1A1816"/><rect x="64" y="80" width="8" height="8" fill="#1A1816"/></svg>
-    <h1>Headroom Mini</h1>
-    <p class="tag">Your Claude usage, on your desk. Let's get it running.</p>
+    <svg width="86" height="62" viewBox="0 0 18 13" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" role="img" aria-label="the Yoyu kitsune" style="margin:0 auto 6px;display:block"><rect x="1" y="0" width="1" height="1" fill="#1A1816"/><rect x="9" y="0" width="1" height="1" fill="#1A1816"/><rect x="1" y="1" width="1" height="1" fill="#1A1816"/><rect x="2" y="1" width="1" height="1" fill="#9E4429"/><rect x="3" y="1" width="1" height="1" fill="#1A1816"/><rect x="7" y="1" width="1" height="1" fill="#1A1816"/><rect x="8" y="1" width="1" height="1" fill="#9E4429"/><rect x="9" y="1" width="1" height="1" fill="#1A1816"/><rect x="0" y="2" width="1" height="1" fill="#1A1816"/><rect x="1" y="2" width="1" height="1" fill="#C9603F"/><rect x="2" y="2" width="1" height="1" fill="#9E4429"/><rect x="3" y="2" width="1" height="1" fill="#9E4429"/><rect x="4" y="2" width="1" height="1" fill="#1A1816"/><rect x="6" y="2" width="1" height="1" fill="#1A1816"/><rect x="7" y="2" width="1" height="1" fill="#9E4429"/><rect x="8" y="2" width="1" height="1" fill="#9E4429"/><rect x="9" y="2" width="1" height="1" fill="#C9603F"/><rect x="10" y="2" width="1" height="1" fill="#1A1816"/><rect x="0" y="3" width="1" height="1" fill="#1A1816"/><rect x="1" y="3" width="1" height="1" fill="#C9603F"/><rect x="2" y="3" width="1" height="1" fill="#C9603F"/><rect x="3" y="3" width="1" height="1" fill="#C9603F"/><rect x="4" y="3" width="1" height="1" fill="#1A1816"/><rect x="5" y="3" width="1" height="1" fill="#1A1816"/><rect x="6" y="3" width="1" height="1" fill="#1A1816"/><rect x="7" y="3" width="1" height="1" fill="#C9603F"/><rect x="8" y="3" width="1" height="1" fill="#C9603F"/><rect x="9" y="3" width="1" height="1" fill="#C9603F"/><rect x="10" y="3" width="1" height="1" fill="#1A1816"/><rect x="0" y="4" width="1" height="1" fill="#1A1816"/><rect x="1" y="4" width="1" height="1" fill="#C9603F"/><rect x="2" y="4" width="1" height="1" fill="#1A1816"/><rect x="3" y="4" width="1" height="1" fill="#C9603F"/><rect x="4" y="4" width="1" height="1" fill="#C9603F"/><rect x="5" y="4" width="1" height="1" fill="#C9603F"/><rect x="6" y="4" width="1" height="1" fill="#C9603F"/><rect x="7" y="4" width="1" height="1" fill="#1A1816"/><rect x="8" y="4" width="1" height="1" fill="#C9603F"/><rect x="9" y="4" width="1" height="1" fill="#C9603F"/><rect x="10" y="4" width="1" height="1" fill="#1A1816"/><rect x="0" y="5" width="1" height="1" fill="#1A1816"/><rect x="1" y="5" width="1" height="1" fill="#C9603F"/><rect x="2" y="5" width="1" height="1" fill="#C9603F"/><rect x="3" y="5" width="1" height="1" fill="#C9603F"/><rect x="4" y="5" width="1" height="1" fill="#C9603F"/><rect x="5" y="5" width="1" height="1" fill="#C9603F"/><rect x="6" y="5" width="1" height="1" fill="#C9603F"/><rect x="7" y="5" width="1" height="1" fill="#C9603F"/><rect x="8" y="5" width="1" height="1" fill="#C9603F"/><rect x="9" y="5" width="1" height="1" fill="#C9603F"/><rect x="10" y="5" width="1" height="1" fill="#1A1816"/><rect x="14" y="5" width="1" height="1" fill="#9E4429"/><rect x="15" y="5" width="1" height="1" fill="#FAF7EF"/><rect x="16" y="5" width="1" height="1" fill="#FAF7EF"/><rect x="1" y="6" width="1" height="1" fill="#1A1816"/><rect x="2" y="6" width="1" height="1" fill="#C9603F"/><rect x="3" y="6" width="1" height="1" fill="#C9603F"/><rect x="4" y="6" width="1" height="1" fill="#C9603F"/><rect x="5" y="6" width="1" height="1" fill="#C9603F"/><rect x="6" y="6" width="1" height="1" fill="#C9603F"/><rect x="7" y="6" width="1" height="1" fill="#C9603F"/><rect x="8" y="6" width="1" height="1" fill="#C9603F"/><rect x="9" y="6" width="1" height="1" fill="#1A1816"/><rect x="12" y="6" width="1" height="1" fill="#9E4429"/><rect x="13" y="6" width="1" height="1" fill="#9E4429"/><rect x="14" y="6" width="1" height="1" fill="#9E4429"/><rect x="15" y="6" width="1" height="1" fill="#FAF7EF"/><rect x="16" y="6" width="1" height="1" fill="#FAF7EF"/><rect x="2" y="7" width="1" height="1" fill="#1A1816"/><rect x="3" y="7" width="1" height="1" fill="#C9603F"/><rect x="4" y="7" width="1" height="1" fill="#FAF7EF"/><rect x="5" y="7" width="1" height="1" fill="#1A1816"/><rect x="6" y="7" width="1" height="1" fill="#FAF7EF"/><rect x="7" y="7" width="1" height="1" fill="#C9603F"/><rect x="8" y="7" width="1" height="1" fill="#1A1816"/><rect x="11" y="7" width="1" height="1" fill="#9E4429"/><rect x="12" y="7" width="1" height="1" fill="#9E4429"/><rect x="13" y="7" width="1" height="1" fill="#9E4429"/><rect x="14" y="7" width="1" height="1" fill="#9E4429"/><rect x="15" y="7" width="1" height="1" fill="#9E4429"/><rect x="16" y="7" width="1" height="1" fill="#FAF7EF"/><rect x="3" y="8" width="1" height="1" fill="#1A1816"/><rect x="4" y="8" width="1" height="1" fill="#1A1816"/><rect x="5" y="8" width="1" height="1" fill="#FAF7EF"/><rect x="6" y="8" width="1" height="1" fill="#1A1816"/><rect x="7" y="8" width="1" height="1" fill="#1A1816"/><rect x="9" y="8" width="1" height="1" fill="#9E4429"/><rect x="10" y="8" width="1" height="1" fill="#9E4429"/><rect x="11" y="8" width="1" height="1" fill="#9E4429"/><rect x="12" y="8" width="1" height="1" fill="#9E4429"/><rect x="13" y="8" width="1" height="1" fill="#9E4429"/><rect x="14" y="8" width="1" height="1" fill="#9E4429"/><rect x="1" y="9" width="1" height="1" fill="#1A1816"/><rect x="2" y="9" width="1" height="1" fill="#C9603F"/><rect x="3" y="9" width="1" height="1" fill="#C9603F"/><rect x="4" y="9" width="1" height="1" fill="#C9603F"/><rect x="5" y="9" width="1" height="1" fill="#C9603F"/><rect x="6" y="9" width="1" height="1" fill="#C9603F"/><rect x="7" y="9" width="1" height="1" fill="#C9603F"/><rect x="8" y="9" width="1" height="1" fill="#C9603F"/><rect x="9" y="9" width="1" height="1" fill="#1A1816"/><rect x="10" y="9" width="1" height="1" fill="#9E4429"/><rect x="11" y="9" width="1" height="1" fill="#9E4429"/><rect x="12" y="9" width="1" height="1" fill="#9E4429"/><rect x="13" y="9" width="1" height="1" fill="#9E4429"/><rect x="1" y="10" width="1" height="1" fill="#1A1816"/><rect x="2" y="10" width="1" height="1" fill="#C9603F"/><rect x="3" y="10" width="1" height="1" fill="#C9603F"/><rect x="4" y="10" width="1" height="1" fill="#FAF7EF"/><rect x="5" y="10" width="1" height="1" fill="#FAF7EF"/><rect x="6" y="10" width="1" height="1" fill="#FAF7EF"/><rect x="7" y="10" width="1" height="1" fill="#C9603F"/><rect x="8" y="10" width="1" height="1" fill="#C9603F"/><rect x="9" y="10" width="1" height="1" fill="#1A1816"/><rect x="10" y="10" width="1" height="1" fill="#9E4429"/><rect x="11" y="10" width="1" height="1" fill="#9E4429"/><rect x="12" y="10" width="1" height="1" fill="#9E4429"/><rect x="14" y="10" width="1" height="1" fill="#9E4429"/><rect x="15" y="10" width="1" height="1" fill="#FAF7EF"/><rect x="16" y="10" width="1" height="1" fill="#FAF7EF"/><rect x="1" y="11" width="1" height="1" fill="#1A1816"/><rect x="2" y="11" width="1" height="1" fill="#C9603F"/><rect x="3" y="11" width="1" height="1" fill="#C9603F"/><rect x="4" y="11" width="1" height="1" fill="#FAF7EF"/><rect x="5" y="11" width="1" height="1" fill="#FAF7EF"/><rect x="6" y="11" width="1" height="1" fill="#FAF7EF"/><rect x="7" y="11" width="1" height="1" fill="#C9603F"/><rect x="8" y="11" width="1" height="1" fill="#C9603F"/><rect x="9" y="11" width="1" height="1" fill="#1A1816"/><rect x="10" y="11" width="1" height="1" fill="#9E4429"/><rect x="11" y="11" width="1" height="1" fill="#9E4429"/><rect x="13" y="11" width="1" height="1" fill="#9E4429"/><rect x="14" y="11" width="1" height="1" fill="#9E4429"/><rect x="15" y="11" width="1" height="1" fill="#FAF7EF"/><rect x="16" y="11" width="1" height="1" fill="#FAF7EF"/><rect x="2" y="12" width="1" height="1" fill="#1A1816"/><rect x="3" y="12" width="1" height="1" fill="#1A1816"/><rect x="7" y="12" width="1" height="1" fill="#1A1816"/><rect x="8" y="12" width="1" height="1" fill="#1A1816"/></svg>
+    <h1>Yoyu<span class="jp" lang="ja">よゆう</span></h1>
+    <p class="tag">Japanese for <em>room to spare</em> — which is the whole
+      point. Your Claude usage, on your desk. Let's get it running.</p>
   </header>
 
   <div class="buy center">
@@ -204,10 +209,10 @@
         <p>Send yourself the link and open it on a computer running Chrome or
           Edge. That's the only step that needs one — everything after it works
           from anywhere.</p>
-        <code id="page-url">https://daveeuson.github.io/HeadroomMini/</code>
+        <code id="page-url">https://daveeuson.github.io/Yoyu/</code>
         <div class="handoff">
           <button id="copy-url" type="button">Copy link</button>
-          <a href="mailto:?subject=Headroom%20Mini%20setup&amp;body=Open%20this%20on%20a%20computer%20in%20Chrome%20or%20Edge%3A%20https%3A%2F%2Fdaveeuson.github.io%2FHeadroomMini%2F">Email it to myself</a>
+          <a href="mailto:?subject=Yoyu%20Mini%20setup&amp;body=Open%20this%20on%20a%20computer%20in%20Chrome%20or%20Edge%3A%20https%3A%2F%2Fdaveeuson.github.io%2FYoyu%2F">Email it to myself</a>
         </div>
       </div>
       <p class="muted center" id="port-hint">Pick the board's port when asked,
@@ -215,13 +220,13 @@
       <p class="unsupported" id="flash-failed">The flasher didn't load.
         <a href="./index.html">Reload the page</a>, and if it still doesn't
         appear, see the
-        <a href="https://github.com/DaveEuson/HeadroomMini/blob/main/docs/TROUBLESHOOTING.md">troubleshooting
+        <a href="https://github.com/DaveEuson/Yoyu/blob/main/docs/TROUBLESHOOTING.md">troubleshooting
         guide</a>.</p>
     </div>
     <noscript>
       <p class="unsupported">Browser flashing needs JavaScript. Turn it on for
         this page, or see the
-        <a href="https://github.com/DaveEuson/HeadroomMini/blob/main/docs/TROUBLESHOOTING.md">troubleshooting
+        <a href="https://github.com/DaveEuson/Yoyu/blob/main/docs/TROUBLESHOOTING.md">troubleshooting
         guide</a> for the other ways to install.</p>
     </noscript>
     <details>
@@ -243,7 +248,7 @@
       <summary>Already flashed, but the board isn't on Wi-Fi?</summary>
       <p>A flashed board with no network to join puts up its own Wi-Fi instead.
         From a phone or a laptop, join the network named
-        <code>Headroom-Setup</code> (password <code>headroom</code>), open
+        <code>Yoyu-Setup</code> (password <code>headroom</code>), open
         <code>http://192.168.4.1</code>, and tap your home network from the
         list. (That network only exists once step 1 is done — a board you
         haven't flashed yet won't broadcast it.)</p>
@@ -256,9 +261,9 @@
       reads your existing login and sends usage to the board — no extra sign-in.
       Download it and open it; there's no installer to run:</p>
     <div class="btnrow">
-      <a class="dl" href="https://github.com/DaveEuson/HeadroomMini/releases/latest/download/HeadroomCompanion-windows.exe">Windows<small>.exe</small></a>
-      <a class="dl" href="https://github.com/DaveEuson/HeadroomMini/releases/latest/download/HeadroomCompanion-macos">macOS<small>Apple / Intel</small></a>
-      <a class="dl" href="https://github.com/DaveEuson/HeadroomMini/releases/latest/download/HeadroomCompanion-linux">Linux<small>x86-64</small></a>
+      <a class="dl" href="https://github.com/DaveEuson/Yoyu/releases/latest/download/YoyuCompanion-windows.exe">Windows<small>.exe</small></a>
+      <a class="dl" href="https://github.com/DaveEuson/Yoyu/releases/latest/download/YoyuCompanion-macos">macOS<small>Apple / Intel</small></a>
+      <a class="dl" href="https://github.com/DaveEuson/Yoyu/releases/latest/download/YoyuCompanion-linux">Linux<small>x86-64</small></a>
     </div>
     <details>
       <summary>Windows says &ldquo;protected your PC&rdquo;? macOS won't open it?</summary>
@@ -293,22 +298,22 @@
         this computer have to be on the same network, not a guest network, and
         not behind a VPN. That's the usual cause.</p>
       <p>If they are and it still can't find it, the
-        <a href="https://github.com/DaveEuson/HeadroomMini/blob/main/docs/TROUBLESHOOTING.md">troubleshooting
+        <a href="https://github.com/DaveEuson/Yoyu/blob/main/docs/TROUBLESHOOTING.md">troubleshooting
         guide</a> covers pointing the companion straight at the address from
         step 2. Otherwise just leave the companion running — it sets itself to
         start with your computer, so the meters stay fresh.</p>
     </details>
     <img class="shot" src="img/meters.jpg" width="1054" height="1400"
       loading="lazy" decoding="async"
-      alt="Headroom Mini on a desk, showing labelled session and weekly usage
+      alt="Yoyu on a desk, showing labelled session and weekly usage
            meters with the percentage left in each.">
     <p class="caption">This is what you're aiming at.</p>
   </div>
 
   <footer>
     That's it — no VS Code, no PlatformIO, nothing to build.<br>
-    <a href="https://github.com/DaveEuson/HeadroomMini/blob/main/docs/TROUBLESHOOTING.md">Having trouble? Troubleshooting guide</a> ·
-    <a class="nb" href="https://github.com/DaveEuson/HeadroomMini">Source &amp; docs on GitHub</a><br>
+    <a href="https://github.com/DaveEuson/Yoyu/blob/main/docs/TROUBLESHOOTING.md">Having trouble? Troubleshooting guide</a> ·
+    <a class="nb" href="https://github.com/DaveEuson/Yoyu">Source &amp; docs on GitHub</a><br>
     Made by Dave Euson with <span class="heart">&hearts;</span> in San Diego<br>
     <small class="muted">&copy; 2026 Dave Euson · As an Amazon Associate I earn from qualifying purchases.</small>
   </footer>

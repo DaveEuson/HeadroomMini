@@ -87,7 +87,7 @@ python -c "import sys; sys.path.insert(0,'companion'); import companion; print(c
       double-tap shortcut was removed: touch dispatches on finger release, so
       tap 1 fired a real Space/Esc before the double-tap code arrived.
       Double-tap should now simply advance two screens.
-- [ ] **Sprocket animation and History** still redraw (both adjacent to edited
+- [ ] **Kitsune animation and History** still redraw (both adjacent to edited
       lines).
 - [ ] **Long-press** still flips % left / % used.
 

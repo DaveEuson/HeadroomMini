@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": "2026-08-06T00:00:00Z",
-  "title": "Design System: Headroom Mini",
+  "title": "Design System: Yoyu",
   "extensions": {
     "colorMeta": {
       "paper": {
@@ -155,7 +155,7 @@
       "css": ".ds-net{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#fff;color:#3d3929;text-align:left;font-weight:500;font-size:1rem;padding:12px 14px;margin:6px 0;border:1px solid rgba(61,57,41,.18);border-radius:10px;display:flex;justify-content:space-between;align-items:center;cursor:pointer}.ds-net-sel{border-color:#d97757;background:#fbeee8}.ds-bars{color:#6b6759;font-size:.85rem;margin-left:10px}"
     },
     {
-      "name": "Headroom Meter",
+      "name": "Yoyu Meter",
       "kind": "custom",
       "refersTo": "meter-fill",
       "description": "The product's signature object, shown at panel polarity. Tier is carried by three signals at once — fill color, fill length, and the literal percentage — so hue is never the sole carrier. Fill clamps to 8px minimum.",
@@ -167,7 +167,7 @@
       "kind": "custom",
       "refersTo": null,
       "description": "The 11x11 pixel-art mascot, rendered from the four-color sprite map shared byte-for-byte between the setup page SVG and the firmware sprite. On board-served pages it sits on a panel-ground chip that reproduces the device polarity in miniature.",
-      "html": "<div class=\"ds-ava\"><svg width=\"72\" height=\"72\" viewBox=\"0 0 88 88\" shape-rendering=\"crispEdges\" role=\"img\" aria-label=\"Sprocket, the Headroom Mini mascot\"><rect x=\"24\" y=\"0\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"56\" y=\"0\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"24\" y=\"8\" width=\"8\" height=\"8\" fill=\"#5F83A1\"/><rect x=\"56\" y=\"8\" width=\"8\" height=\"8\" fill=\"#5F83A1\"/><rect x=\"16\" y=\"16\" width=\"56\" height=\"8\" fill=\"#1A1816\"/><rect x=\"8\" y=\"24\" width=\"8\" height=\"56\" fill=\"#1A1816\"/><rect x=\"72\" y=\"24\" width=\"8\" height=\"56\" fill=\"#1A1816\"/><rect x=\"16\" y=\"24\" width=\"56\" height=\"8\" fill=\"#5F83A1\"/><rect x=\"16\" y=\"32\" width=\"56\" height=\"24\" fill=\"#FAF7EF\"/><rect x=\"24\" y=\"40\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"56\" y=\"40\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"32\" y=\"56\" width=\"24\" height=\"8\" fill=\"#1A1816\"/><rect x=\"16\" y=\"56\" width=\"16\" height=\"8\" fill=\"#FAF7EF\"/><rect x=\"56\" y=\"56\" width=\"16\" height=\"8\" fill=\"#FAF7EF\"/><rect x=\"16\" y=\"64\" width=\"56\" height=\"16\" fill=\"#5F83A1\"/><rect x=\"24\" y=\"64\" width=\"8\" height=\"8\" fill=\"#3F5F7A\"/><rect x=\"56\" y=\"64\" width=\"8\" height=\"8\" fill=\"#3F5F7A\"/><rect x=\"16\" y=\"80\" width=\"16\" height=\"8\" fill=\"#1A1816\"/><rect x=\"56\" y=\"80\" width=\"16\" height=\"8\" fill=\"#1A1816\"/></svg></div>",
+      "html": "<div class=\"ds-ava\"><svg width=\"72\" height=\"72\" viewBox=\"0 0 88 88\" shape-rendering=\"crispEdges\" role=\"img\" aria-label=\"Sprocket, the Yoyu mascot\"><rect x=\"24\" y=\"0\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"56\" y=\"0\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"24\" y=\"8\" width=\"8\" height=\"8\" fill=\"#5F83A1\"/><rect x=\"56\" y=\"8\" width=\"8\" height=\"8\" fill=\"#5F83A1\"/><rect x=\"16\" y=\"16\" width=\"56\" height=\"8\" fill=\"#1A1816\"/><rect x=\"8\" y=\"24\" width=\"8\" height=\"56\" fill=\"#1A1816\"/><rect x=\"72\" y=\"24\" width=\"8\" height=\"56\" fill=\"#1A1816\"/><rect x=\"16\" y=\"24\" width=\"56\" height=\"8\" fill=\"#5F83A1\"/><rect x=\"16\" y=\"32\" width=\"56\" height=\"24\" fill=\"#FAF7EF\"/><rect x=\"24\" y=\"40\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"56\" y=\"40\" width=\"8\" height=\"8\" fill=\"#1A1816\"/><rect x=\"32\" y=\"56\" width=\"24\" height=\"8\" fill=\"#1A1816\"/><rect x=\"16\" y=\"56\" width=\"16\" height=\"8\" fill=\"#FAF7EF\"/><rect x=\"56\" y=\"56\" width=\"16\" height=\"8\" fill=\"#FAF7EF\"/><rect x=\"16\" y=\"64\" width=\"56\" height=\"16\" fill=\"#5F83A1\"/><rect x=\"24\" y=\"64\" width=\"8\" height=\"8\" fill=\"#3F5F7A\"/><rect x=\"56\" y=\"64\" width=\"8\" height=\"8\" fill=\"#3F5F7A\"/><rect x=\"16\" y=\"80\" width=\"16\" height=\"8\" fill=\"#1A1816\"/><rect x=\"56\" y=\"80\" width=\"16\" height=\"8\" fill=\"#1A1816\"/></svg></div>",
       "css": ".ds-ava{display:inline-block;background:#262624;border-radius:12px;padding:7px;line-height:0}"
     }
   ],
