@@ -97,6 +97,25 @@ Checked on both panels: meters bar, history graph, battery glyph, settings row,
 mascot, OTA progress bar, and the caption plus both stat lines all land inside
 the glass. Mascot cell size is 13 on the LCD (unchanged) and 19 on the AMOLED.
 
+## Measured on hardware
+
+The release-check instrumentation was flashed to a real board and answered its
+own question on the first run:
+
+| | |
+|---|---|
+| `tries` | **2** — the first attempt failed, the retry succeeded |
+| heap before / after | 273328 / 272124 — **1.2KB** for the whole fetch |
+
+So the failure is real and frequent enough to hit immediately, and heap
+exhaustion is **not** the cause: 1.2KB against 270KB free is nothing. It is a
+network or TLS transient. The retry is the right fix either way; the theory
+behind it was wrong.
+
+`/api/status` also earned its keep straight away — it reported
+`poll_status: "rate limited - waiting ~10m"`, which is why the meters were
+empty. That string was previously only ever drawn on the board's own screen.
+
 ## §3 — Then, and only then, distribution
 
 - [ ] `release.yml` builds both envs and publishes `yoyu-amoled-*` alongside the

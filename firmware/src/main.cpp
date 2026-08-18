@@ -390,10 +390,11 @@ static unsigned long cachedTagAt = 0;
 static const unsigned long TAG_CACHE_MS     = 60000;
 static const uint8_t       TAG_FETCH_TRIES  = 3;
 static const unsigned long TAG_RETRY_DELAY_MS = 400;
-// Release-check health, surfaced in /api/status. The check fails intermittently
-// and the leading theory is that two TLS handshakes close together exhaust the
-// heap — which can't be confirmed or killed on a board sitting on a shelf
-// without numbers to read remotely.
+// Release-check health, surfaced in /api/status. The check fails intermittently.
+// Heap exhaustion was the theory; these numbers killed it on the first run —
+// the fetch costs ~1.2KB against ~270KB free, so it is a network/TLS transient,
+// not memory pressure. Kept because they are what settled it, and because the
+// same instrumentation is what tells you the retry is still earning its place.
 static uint32_t  tagHeapBefore   = 0;     // free heap entering the fetch
 static uint32_t  tagHeapAfter    = 0;     // free heap once the handshake settled
 static uint8_t   tagFetchTries   = 0;     // attempts the last fetch took (0 = never ran)
@@ -2306,8 +2307,9 @@ static String fetchLatestTag() {
   for (tagFetchTries = 1; tagFetchTries <= TAG_FETCH_TRIES; tagFetchTries++) {
     tag = fetchLatestTagOnce();
     if (tag.length()) break;
-    // A TLS handshake needs tens of KB; back off rather than immediately
-    // asking for another one, so a heap-pressure failure has a chance to clear.
+    // Short pause between attempts. Measured on hardware, the fetch costs about
+    // 1.2KB of a free 270KB, so this is not waiting for memory to come back —
+    // it is giving a flaky connection a moment rather than hammering it.
     if (tagFetchTries < TAG_FETCH_TRIES) delay(TAG_RETRY_DELAY_MS);
   }
   tagHeapAfter = ESP.getFreeHeap();
