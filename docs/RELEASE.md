@@ -93,8 +93,45 @@ Fixed URLs the site depends on (resolve once a Release exists):
          confirm it installs the new signed image and reboots on the new
          version (the signature is accepted). Check the version without
          standing over the board — and for more than one at a time — with
-         `curl -s http://<board-ip>:8080/api/status`, which reports `version`
-         and `self_hosted`.
+         `curl -s http://<board-ip>:8080/api/status`, which reports `version`,
+         `board`, `poll_status` and `release_check`.
+       - **Exercise the change itself, against the published artifact.** Not
+         the branch, not the source — the file someone downloading right now
+         would get. See below.
+
+### Test the artifact, not the branch
+
+A green test run says the source is right. It says nothing about whether the
+code path a user actually takes reaches it, and that is a different question.
+
+v1.6.1 shipped a companion fix that cleared stale auto-start entries. Its tests
+passed, and the fix was real. It also only worked in `YoyuCompanion-cli`:
+`tray.py` has its own entry point that never reached the new code, and the tray
+app is the download the setup page points everyone at. So the users most likely
+to hit the bug were exactly the ones the fix missed, and v1.6.2 existed only to
+correct that. Downloading both binaries and running them would have caught it
+in two minutes; no amount of testing the branch ever would.
+
+So for whatever the release actually changes:
+
+- [ ] **Download the published asset** for it — the real one, from the release
+      page, not a local build.
+- [ ] **Reproduce the condition it fixes**, then run it. If the fix is "removes
+      a stale file", plant the stale file. Plant something similar it must
+      *not* touch, too — a fix that over-reaches is worse than the bug.
+- [ ] **Run every build that ships the change.** There are two companion
+      binaries, and they have separate entry points.
+
+Two things that look like failures and are not, both met while doing exactly
+this:
+
+- **Searching a PyInstaller `.exe` for a function name finds nothing.** The
+  bytecode is compressed inside the binary; string search cannot see it. Test
+  the behaviour, not the bytes.
+- **Piped stdout from the CLI can come back empty**, including its normal
+  banner. It is block-buffered, and killing the process discards the buffer. A
+  real terminal is line-buffered and shows it. Redirect to a file and let the
+  process exit, or read stderr, before concluding nothing was printed.
 
 ## Release notes template
 
