@@ -59,31 +59,62 @@ before the uniform mapping is proven on hardware.
       `Arduino_CO5300`, and their constructor signatures match these pins. No
       library bump needed.
 
-## §2 — Blocked on `main.cpp`
+## §2 — Done, still no hardware
 
-`main.cpp` was being edited by another session when §1 landed, so none of this
-was started. **The `yoyu-amoled216` env currently produces LCD firmware** — it
-compiles the same source with a flag nothing reads yet. Same size, functionally
-identical, differing only in embedded build metadata.
+- [x] `main.cpp` includes `boards.h`; the hardcoded pin block is gone.
+- [x] Display construction branches on `PANEL_IS_QSPI` — `Arduino_ESP32QSPI` +
+      `Arduino_CO5300`.
+- [x] Brightness routes to `Arduino_CO5300::setBrightness()` where there is no
+      backlight pin. Same 0–255 scale, so the settings UI and the swipe gesture
+      are untouched.
+- [x] Battery gauge returns the no-battery answer where `HAS_BATTERY_ADC == 0`,
+      which the UI already knows how to draw (i.e. not at all).
+- [x] OTA URLs built from `OTA_ASSET_PREFIX`. **Verified in the built images:**
+      the LCD binary contains only `headroom-mini-app.bin`, the AMOLED binary
+      only `yoyu-amoled-app.bin`.
+- [x] Uniform-scale mapping — see below.
+- [ ] **Touch is NOT implemented for the CST9220.** It is a CST92xx-family
+      multi-touch part: 16-bit register addressing and no hardware gesture
+      engine, so the CST816D read does not port to it and gestures have to be
+      derived from coordinates. Written blind it would read as "no touch chip",
+      which this firmware survives — indistinguishable from working hardware
+      with touch switched off. `pollTouch()` returns early on this board and
+      says so. Do it with the panel in hand.
 
-That is why `release.yml` and the setup page were deliberately left alone: both
-would have offered people a download that cannot drive their panel.
+### The mapping, and the bug it exposed
 
-In order:
+`mapX`/`mapY` now apply **one** scale to both axes and add a centring offset.
+On the reference panel that is the identity for every coordinate — verified
+exhaustively across all 240×320 — so the shipping board cannot have moved.
 
-- [ ] `main.cpp` includes `boards.h` and deletes its hardcoded pin block
-      (currently around line 67).
-- [ ] Display construction branches on `PANEL_IS_QSPI`: `Arduino_ESP32QSPI(CS,
-      CLK, D0, D1, D2, D3)` + `Arduino_CO5300(bus, PANEL_RST, 0, true, 480, 480)`.
-- [ ] Brightness: the LCD board dims a backlight pin; this panel has none. Route
-      `PANEL_HAS_BACKLIGHT == 0` to `Arduino_CO5300::setBrightness()`.
-- [ ] Touch: CST9220 driver alongside CST816D, selected by board.
-- [ ] Uniform-scale mapping, per the section above.
-- [ ] Battery gauge compiled out where `HAS_BATTERY_ADC == 0`.
-- [ ] OTA URL built from `OTA_ASSET_PREFIX` so each board fetches its own image.
-      **This one is a safety issue, not a nicety:** both images are validly
-      signed, so the signature check will happily accept LCD firmware onto an
-      AMOLED board.
+Adding the offset exposed a latent confusion: `mapX`/`mapY` were being used for
+both *positions* and *lengths*, in about thirty places. Those were the same
+arithmetic while the design space filled the panel, and stop being the same the
+moment it does not — sizing a bar with `mapX` would have added the 60px left
+margin to its width as well as its position. Lengths now go through `mapLen()`.
+
+Checked on both panels: meters bar, history graph, battery glyph, settings row,
+mascot, OTA progress bar, and the caption plus both stat lines all land inside
+the glass. Mascot cell size is 13 on the LCD (unchanged) and 19 on the AMOLED.
+
+## Measured on hardware
+
+The release-check instrumentation was flashed to a real board and answered its
+own question on the first run:
+
+| | |
+|---|---|
+| `tries` | **2** — the first attempt failed, the retry succeeded |
+| heap before / after | 273328 / 272124 — **1.2KB** for the whole fetch |
+
+So the failure is real and frequent enough to hit immediately, and heap
+exhaustion is **not** the cause: 1.2KB against 270KB free is nothing. It is a
+network or TLS transient. The retry is the right fix either way; the theory
+behind it was wrong.
+
+`/api/status` also earned its keep straight away — it reported
+`poll_status: "rate limited - waiting ~10m"`, which is why the meters were
+empty. That string was previously only ever drawn on the board's own screen.
 
 ## §3 — Then, and only then, distribution
 

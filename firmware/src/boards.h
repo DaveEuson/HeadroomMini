@@ -42,6 +42,7 @@
 #define TOUCH_SDA         48
 #define TOUCH_SCL         47
 #define TOUCH_ADDR        0x15   // CST816D
+#define TOUCH_IS_CST816   1      // 8-bit registers, gestures decoded in hardware
 #define TOUCH_INT         GFX_NOT_DEFINED
 #define TOUCH_RST         GFX_NOT_DEFINED
 
@@ -88,6 +89,12 @@
 // it -- a wrong address degrades to "no touch found", which this firmware
 // already survives, so it will look like working hardware with a dead screen.
 #define TOUCH_ADDR        0x5A
+// The CST9220 is a CST92xx-family multi-touch controller: 16-bit register
+// addressing and no hardware gesture engine, so the CST816D read below does not
+// port to it and gestures have to be derived from coordinates in software.
+// Deliberately not written blind -- a guessed register map reads as "no touch
+// chip", which this firmware survives, so it would look like working hardware.
+#define TOUCH_IS_CST816   0
 
 // UNVERIFIED: no battery divider is documented for this board. Left off rather
 // than guessed; the gauge already hides itself when there is no reading.
