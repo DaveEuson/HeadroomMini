@@ -39,7 +39,7 @@ INTERVAL = 120  # seconds between feeds
 # Shared state. Python's GIL makes these simple dict updates safe enough here.
 # url may be pinned up front via the HEADROOM_PI env var or a saved config, so
 # a fussy network (VPNs, work laptops) doesn't have to be auto-discovered.
-state = {"color": "amber", "status": "Starting…", "url": None,
+state = {"color": "amber", "status": "Starting…", "url": None, "swept": None,
          "feeding": True, "fixed": False}
 
 
@@ -263,12 +263,35 @@ def build_menu():
 
 
 def main():
+    # The tray app has its own entry point and never runs companion.main(), so
+    # the stale-auto-start sweep that lives there was never reaching the build
+    # that most people actually download. Caught by running the packaged binary
+    # rather than the source: the CLI swept, the tray did not.
+    #
+    # There is no console here to print to, so anything removed has to be said
+    # in the UI. It goes in the menu's status line, and is offered as a desktop
+    # notification too where the backend supports one.
+    swept = companion.sweep_stale_autostart()
+    if swept:
+        state["status"] = ("Removed %d leftover auto-start %s from an older "
+                           "version" % (len(swept),
+                                        "entry" if len(swept) == 1 else "entries"))
+        state["swept"] = swept
+
     pinned = initial_url()
     if pinned:
         state["url"] = pinned
         state["fixed"] = True
     icon = pystray.Icon("Yoyu", make_icon("amber"), "Yoyu", build_menu())
     threading.Thread(target=worker, args=(icon,), daemon=True).start()
+    if state.get("swept"):
+        try:
+            icon.notify("An older version was still starting a second copy at "
+                        "login. Removed it — two of them fight over your Claude "
+                        "account and the board stops showing numbers.",
+                        "Yoyu")
+        except Exception:      # noqa: BLE001 — not every backend has notify()
+            pass
     icon.run()   # blocks on the main thread (required on macOS)
 
 
