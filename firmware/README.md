@@ -1,4 +1,4 @@
-# Yoyu — ESP32-S3 firmware
+# Yoyu よゆう — ESP32-S3 firmware
 
 Yoyu on a **Waveshare ESP32-S3-Touch-LCD-2** (2" ST7789 240×320 IPS,
 ESP32-S3R8, battery header). ~$26, no Raspberry Pi, no Linux.

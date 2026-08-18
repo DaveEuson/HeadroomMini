@@ -237,6 +237,13 @@ setup page and the sprite drawn on the board: **Fur** (`#c9603f`),
 terracotta fill. Every other control steps down to Stone, a bordered white tile,
 or plain ink. When a second thing looks equally urgent, one of them is wrong.
 
+**The Wordmark Rule.** The name is `Yoyu よゆう` — the kana beside the Latin,
+smaller and muted, never stacked beneath it as a translation and never used
+alone. It renders anywhere that declares utf-8: the setup page, every page the
+board serves, the repo. It does **not** render on the panel. That bitmap font is
+ASCII, so the splash stays `YOYU` and any panel string that reaches for kana
+draws blanks — silently, since the font has no notdef glyph.
+
 **The Polarity Rule.** Paper colors never appear on the panel and panel colors
 never appear on paper. `#94907e` is the panel's muted ink; on cream it measures
 2.75:1 and fails. Use `#6b6759` on paper.

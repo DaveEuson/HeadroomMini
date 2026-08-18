@@ -178,6 +178,16 @@ static const TailCell TAIL_2[46] = {
 static const TailCell *const KITSUNE_TAILS[3] = {TAIL_0, TAIL_1, TAIL_2};
 static const uint8_t KITSUNE_TAIL_N[3] = {35, 48, 46};
 
+// The resting face, at whole-cell resolution. On the panel the features are
+// drawn as sub-cell rects by drawKitsuneAnim, because they have to change with
+// the mood; the SVG has no mood to show and gets this instead. Without it the
+// web avatar renders faceless, which is how it shipped the first time.
+static const TailCell KITSUNE_FACE[5] = {
+    {6, 2, 'K'}, {6, 7, 'K'},            // eyes
+    {9, 5, 'K'},                          // nose
+    {10, 4, 'K'}, {10, 6, 'K'},           // mouth
+};
+
 // ------------------------------------------------------------------- state
 
 struct Window {
@@ -2759,6 +2769,7 @@ static String kitsuneSvg(int px) {
   for (int y = 0; y < K_ROWS; y++)
     for (int x = 0; x < K_COLS; x++)
       if (KITSUNE_SPRITE[y][x] != '.') grid[y][x] = KITSUNE_SPRITE[y][x];
+  for (const TailCell &f : KITSUNE_FACE) grid[f.r][f.c] = f.ch;
   String s = "<svg width="; s += px; s += " height="; s += (px * K_ROWS) / K_COLS;
   s += " viewBox='0 0 18 15' shape-rendering=crispEdges style='display:block'>";
   for (int y = 0; y < K_ROWS; y++)
@@ -2780,7 +2791,7 @@ static void handleRoot() {
   String s = F(
       "<!DOCTYPE html><html><head><meta charset=utf-8>"
       "<meta name=viewport content='width=device-width,initial-scale=1'>"
-      "<title>Yoyu</title><style>"
+      "<title>Yoyu \u3088\u3086\u3046</title><style>"
       "body{font-family:system-ui;background:#f0eee6;color:#3d3929;padding:22px 16px;margin:0}"
       ".card{background:#faf9f5;border:1px solid rgba(61,57,41,.12);border-radius:14px;"
       "padding:18px;max-width:520px;margin:0 auto 14px}h1{margin:.1rem 0}"
@@ -2791,11 +2802,17 @@ static void handleRoot() {
       "a.btn{display:inline-block;background:#d97757;color:#fff;text-decoration:none;"
       "font-weight:600;padding:11px 17px;border-radius:10px;margin:6px 8px 0 0}"
       ".muted{color:#6b6759;font-size:.9rem}summary{cursor:pointer}"
-      ".ava{background:#262624;border-radius:12px;padding:7px;flex:none}</style></head><body>"
+      ".ava{background:#262624;border-radius:12px;padding:7px;flex:none}"
+      // Same lockup as the setup page. Every page the board serves declares
+      // utf-8, so the kana are safe here -- unlike the panel, whose bitmap
+      // font is ASCII only and would draw them as blanks.
+      ".jp{font-size:.6em;color:#6b6759;font-weight:400;margin-left:.3em}</style>"
+      "</head><body>"
       "<div class=card style='display:flex;align-items:center;gap:14px'>"
       "<div class=ava>");
   s += kitsuneSvg(52);
-  s += F("</div><div><h1 style='margin:0 0 5px'>Yoyu</h1><span class=pill>");
+  s += F("</div><div><h1 style='margin:0 0 5px'>Yoyu"
+         "<span class=jp lang=ja>\u3088\u3086\u3046</span></h1><span class=pill>");
   s += st;
   s += F("</span></div></div><div class=card><h3>See your Claude usage</h3><ol>"
          "<li><b>Download the companion app</b> and open it.</li>"

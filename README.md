@@ -1,6 +1,6 @@
-# Yoyu
+# Yoyu よゆう
 
-A tiny desk gadget that shows your **Claude usage limits** at a glance — how
+*yoyū* — Japanese for **room to spare**. A tiny desk gadget that shows your **Claude usage limits** at a glance — how
 much you have left in each window, when it resets, and a phone alert when you're
 running low. No terminal, no menubar, no estimating.
 

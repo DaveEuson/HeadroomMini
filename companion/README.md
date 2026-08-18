@@ -1,4 +1,4 @@
-# Yoyu companion
+# Yoyu よゆう — companion
 
 Runs on the **computer where you use Claude Code** and feeds your usage to the
 board.

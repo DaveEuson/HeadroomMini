@@ -174,8 +174,12 @@ polls the same account; charge-only USB-C cables; unsupported browsers.
 
 ## Brand Commitments
 
-- **Name:** Yoyu. Sibling project: YoyuZero (the Raspberry Pi
-  version, mascot "Pip").
+- **Name:** Yoyu よゆう — *yoyū*, Japanese for "room to spare". The kana are
+  part of the wordmark on every surface that can render them: the setup page,
+  the board's own web pages, and the repo. They are **not** a translation set
+  beneath the name, and never replace it. The panel is the one exception —
+  its bitmap font is ASCII, so the splash stays `YOYU`. Sibling project:
+  YoyuZero (the Raspberry Pi version, mascot "Pip").
 - **The kitsune** — the mascot, a pixel-art fox with its own device screen who
   reacts to remaining headroom, and whose tails count it: three when there is
   room to spare, one when there is almost none. Present as an inline pixel SVG
