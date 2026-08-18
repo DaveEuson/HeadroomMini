@@ -12,7 +12,9 @@ Run: python -m unittest discover -s companion
 import hashlib
 import hmac
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -289,3 +291,51 @@ class _FakeProc:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StaleAutostartSweepTests(unittest.TestCase):
+    """The sweep runs unprompted against somebody else's Startup folder, so the
+    thing worth testing is what it refuses to delete."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self._nt = os.name
+        # The sweep is a no-op off Windows; pretend so the logic is reachable.
+        os.name = "nt"
+        self.addCleanup(lambda: setattr(os, "name", self._nt))
+
+    def _write(self, name, body):
+        p = os.path.join(self.dir, name)
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        return p
+
+    BAT = ('@echo off\nstart "" "C:\python\pythonw.exe" '
+           '"H:\Projects\ClaudeTrackerPi\companion\companion.py"\n')
+
+    def test_removes_every_older_name(self):
+        stale = [self._write(n, self.BAT)
+                 for n in companion._WIN_AUTOSTART_NAMES[1:]]
+        removed = companion.sweep_stale_autostart(self.dir)
+        self.assertCountEqual(removed, stale)
+        for p in stale:
+            self.assertFalse(os.path.exists(p))
+
+    def test_keeps_the_current_name(self):
+        # The live entry is what makes the companion start at all; sweeping it
+        # would silently disable auto-start every single run.
+        current = self._write(companion._WIN_AUTOSTART_NAMES[0], self.BAT)
+        self.assertEqual(companion.sweep_stale_autostart(self.dir), [])
+        self.assertTrue(os.path.exists(current))
+
+    def test_leaves_a_same_named_file_that_is_not_ours(self):
+        # Deleting an unrelated file out of Startup because it shares a name
+        # would be far worse than the bug this fixes.
+        other = self._write(companion._WIN_AUTOSTART_NAMES[1],
+                            '@echo off\nstart "" "C:\Games\launcher.exe"\n')
+        self.assertEqual(companion.sweep_stale_autostart(self.dir), [])
+        self.assertTrue(os.path.exists(other))
+
+    def test_no_op_when_nothing_is_there(self):
+        self.assertEqual(companion.sweep_stale_autostart(self.dir), [])

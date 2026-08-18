@@ -799,6 +799,45 @@ def _win_startup_dir():
                         "Start Menu", "Programs", "Startup")
 
 
+def sweep_stale_autostart(startup_dir=None):
+    """Delete Windows Startup entries this project wrote under an older name.
+
+    --uninstall only helps people who run it. Everyone who upgraded through an
+    earlier name still has a stale entry launching a companion at every login,
+    polling Anthropic on the same account as everything else -- and two pollers
+    on one account is what rate-limits a board into showing nothing. They have
+    no way to know that, so the fix cannot be a command they have to find.
+
+    Deliberately conservative about what it deletes, because this is somebody
+    else's Startup folder:
+      * only names this project has written, never the current one;
+      * only if the file actually launches a companion, so an unrelated file
+        that happens to share the name survives;
+      * and it says what it removed rather than doing it silently.
+    """
+    if os.name != "nt":
+        return []               # the macOS and Linux unit names never changed
+    d = startup_dir or _win_startup_dir()
+    removed = []
+    for name in _WIN_AUTOSTART_NAMES[1:]:      # [0] is the current name: keep it
+        path = os.path.join(d, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                body = fh.read()
+        except OSError:
+            continue
+        if "companion" not in body.lower():
+            continue            # same name, not ours -- leave it alone
+        try:
+            os.remove(path)
+            removed.append(path)
+        except OSError:
+            pass
+    return removed
+
+
 def uninstall_autostart():
     removed = []
     paths = [os.path.join(_win_startup_dir(), n) for n in _WIN_AUTOSTART_NAMES]
@@ -1167,6 +1206,12 @@ def main():
         threading.Thread(target=poll_actions, daemon=True,
                          args=(board, cfg["token"], keymap)).start()
         print(f"Actions enabled: taps on {board} will type here.")
+    # Before anything else touches autostart: clear out entries left by older
+    # names of this product, which would otherwise keep starting a second
+    # companion at every login for as long as the machine lives.
+    for stale in sweep_stale_autostart():
+        print("Removed a leftover auto-start entry from an older version:\n"
+              f"  {stale}")
     first_ok, _, _ = run_once(cfg)
     if first_ok and not args.no_install and not os.path.isfile(INSTALLED_MARKER):
         try:
