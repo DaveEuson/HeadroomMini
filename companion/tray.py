@@ -104,7 +104,15 @@ def feed_once(url):
             return "amber", "Rate limited by Anthropic — backing off", True
         return "amber", "Usage temporarily unreadable", False
     if not live:
-        return "red", "No Claude login on this computer", False
+        # "No Claude login" is true and useless: it does not say what to do, and
+        # to somebody whose Claude Code is working in the next window it reads
+        # as simply wrong. The tray has one short line, so spend it on the fix.
+        st = companion.login_state()
+        if st == "not_installed":
+            return "red", "Claude Code isn't installed here — click for help", False
+        if st == "signed_out":
+            return "red", "Claude sign-in cleared — run: claude, then /login", False
+        return "red", "Claude Code not signed in — run: claude, then /login", False
     windows, plan = live
     payload = {"windows": windows, "plan": plan, "source": "live"}
     try:
@@ -241,9 +249,27 @@ def toggle_autostart(icon, item):
         pass
 
 
+HELP_URL = ("https://github.com/DaveEuson/Yoyu/blob/main/docs/"
+            "TROUBLESHOOTING.md#the-companion-says-it-cant-find-your-claude-login")
+
+
+def needs_login():
+    return companion.login_state() != "ok"
+
+
+def do_login_help(icon=None, item=None):
+    """Open the written steps. The tray has no room for four numbered lines,
+    and a notification is gone before anyone has finished reading it."""
+    webbrowser.open(HELP_URL)
+
+
 def build_menu():
     return pystray.Menu(
         pystray.MenuItem(lambda *a: state["status"], None, enabled=False),
+        # Only shown while it applies, so it reads as an answer to the status
+        # line above it rather than a permanent piece of furniture.
+        pystray.MenuItem("How to sign in to Claude Code…", do_login_help,
+                         visible=lambda item: needs_login()),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Feeding", toggle_feeding,
                          checked=lambda item: state["feeding"]),

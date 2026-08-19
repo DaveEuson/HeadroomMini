@@ -11,6 +11,7 @@ Run: python -m unittest discover -s companion
 
 import hashlib
 import hmac
+import json
 import os
 import shutil
 import sys
@@ -363,3 +364,63 @@ class EntryPointSweepTests(unittest.TestCase):
 
     def test_tray_entry_point_sweeps(self):
         self.assertIn("sweep_stale_autostart()", self._src("tray.py"))
+
+
+class LoginStateTests(unittest.TestCase):
+    """The four situations that used to be one message.
+
+    They need different things done about them, and telling somebody "you're
+    not signed in" when Claude Code is working in the next window reads as the
+    tool being broken rather than as a diagnosis.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.claude = os.path.join(self.dir, ".claude")
+
+    def _creds(self, obj):
+        os.makedirs(self.claude, exist_ok=True)
+        with open(os.path.join(self.claude, ".credentials.json"), "w",
+                  encoding="utf-8") as fh:
+            fh.write(obj if isinstance(obj, str) else json.dumps(obj))
+
+    def test_not_installed_when_there_is_no_claude_dir(self):
+        self.assertEqual(companion.login_state(self.claude), "not_installed")
+
+    def test_never_signed_in_when_dir_exists_but_no_file(self):
+        os.makedirs(self.claude)
+        self.assertEqual(companion.login_state(self.claude), "never_signed_in")
+
+    def test_ok_when_a_token_is_present(self):
+        self._creds({"claudeAiOauth": {"accessToken": "sk-xxx",
+                                       "refreshToken": "rt-xxx"}})
+        self.assertEqual(companion.login_state(self.claude), "ok")
+
+    def test_signed_out_when_tokens_are_blank(self):
+        # The real-world case: Claude Code wrote the record back without its
+        # secrets. Distinguishable from never-signed-in only by the keys being
+        # present and empty, which is why this is checked and not inferred.
+        self._creds({"claudeAiOauth": {"accessToken": "", "refreshToken": "",
+                                       "expiresAt": 0,
+                                       "subscriptionType": "max"}})
+        self.assertEqual(companion.login_state(self.claude), "signed_out")
+
+    def test_unreadable_when_the_file_is_not_json(self):
+        self._creds("{ this is not json")
+        self.assertEqual(companion.login_state(self.claude), "unreadable")
+
+    def test_every_state_gives_a_terminal_command_to_run(self):
+        # The whole point is that nobody is left wondering what to type.
+        for st in ("not_installed", "never_signed_in", "signed_out", "unreadable"):
+            text = "\n".join(companion.login_help(st))
+            self.assertTrue("claude" in text,
+                            f"{st} help never mentions the claude command")
+            if st != "not_installed":
+                self.assertIn("/login", text, f"{st} help omits /login")
+
+    def test_signed_out_names_the_shared_account_cause(self):
+        # Without this the user fixes it, and it breaks again tomorrow.
+        text = "\n".join(companion.login_help("signed_out")).lower()
+        self.assertIn("same claude account", text)
+        self.assertIn("rotate", text)

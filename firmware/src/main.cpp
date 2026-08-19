@@ -630,6 +630,11 @@ static void drawMeters() {
         drawCentered("run the companion app on your", 176, 1, C_ACC);
         drawCentered("computer to sign the board back in", 192, 1, C_ACC);
         drawCentered("companion.py --pair", 212, 1, C_INK);
+        // The step people get stuck on. Whatever signed this board out has
+        // usually signed the computer out too -- they share one Claude login
+        // and rotate each other's token -- so the instruction above fails with
+        // its own "no login" error and the two look like separate faults.
+        drawCentered("if that says no login: claude /login", 228, 1, C_MUTED);
       }
       // Always show where this board is. Auto-discovery can land on the wrong
       // device (another Yoyu on the LAN answers first), and without the

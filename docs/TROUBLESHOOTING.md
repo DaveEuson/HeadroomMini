@@ -160,6 +160,32 @@ claude          # follow the login prompt, or type /login
 claude /usage   # should print your real usage
 ```
 
+### "But Claude Code works fine — I'm definitely signed in"
+
+Then your credentials have most likely been **cleared rather than lost**. The
+file is still there and looks normal, but the tokens inside it are empty
+strings, so there is nothing for the companion to read. Claude Code itself can
+keep working from a token it already holds in memory, which is why the two
+disagree.
+
+You can confirm it in a second — the tokens should be long strings, not `""`:
+
+```
+python -c "import json,os;o=json.load(open(os.path.expanduser('~/.claude/.credentials.json')))['claudeAiOauth'];print('access',len(o['accessToken']),'refresh',len(o['refreshToken']))"
+```
+
+`access 0 refresh 0` means cleared. Signing in again (`claude`, then `/login`)
+fixes it.
+
+**What clears them:** most often a second device refreshing the *same* Claude
+account. Refresh tokens rotate — when your board refreshes, the copy on your
+computer stops being valid, and vice versa. Whichever one refreshes next gets
+refused and ends up signed out.
+
+So if this keeps happening every day or two, the two are fighting over one
+login. Either give the board its own Claude account, or stop it polling and let
+the companion feed it (see the first section).
+
 ## The board shows the wrong numbers (e.g. stuck near 100%)
 
 **What it means:** the companion is running, but its output says
