@@ -277,9 +277,24 @@ static const char *RELEASES_API =
 static const char *APP_BIN_URL = GH_DL OTA_ASSET_PREFIX "-app.bin";
 static const char *APP_SIG_URL = GH_DL OTA_ASSET_PREFIX "-app.bin.sig";
 static const unsigned long POLL_INTERVAL_MS = 5UL * 60UL * 1000UL;
+// How long a companion push keeps this board from polling for itself. Comfortably
+// longer than the companion's own 2-minute cadence, so an occasional slow cycle
+// doesn't have both of them reading at once.
+static const unsigned long COMPANION_FRESH_MS = 8UL * 60UL * 1000UL;
 static unsigned long pollBackoffMs = 0;   // extra wait after a 429, exponential
 
-static String   accessTok, refreshTok;
+static String   accessTok;   // access only: see storeOauth() for why there
+                             // is deliberately no refresh token here
+// Issued once, when a companion proves physical possession by pairing.
+// It buys exactly one power: handing this board a newer access token for
+// the account it is already signed in to. That is worth far less than the
+// token itself, which is why top-ups do not need someone at the screen.
+static String   topupKey;
+// When a companion last pushed usage of its own accord (as opposed to this
+// board fetching it). Used to stand down our own polling: both read the same
+// account, and Anthropic rate-limits per account, so two readers on one login
+// spend the budget twice over for one set of numbers.
+static unsigned long lastCompanionPushMs = 0;
 static uint64_t tokenExpMs = 0;       // epoch ms, 0 = unknown
 static bool     selfHosted = false;   // true once a login is stored
 static String   pushToken;            // optional shared secret; when set, the
@@ -1710,6 +1725,7 @@ static void handlePush() {
     projAt = millis();
   }
   lastPushMs = millis();
+  lastCompanionPushMs = millis();
   sendJson(200, "{\"ok\":true}");
   noteUsageActivity();
   checkAlerts();
@@ -1991,8 +2007,9 @@ static void loadCreds() {
   // screen settings the moment it took the update.
   prefs.begin("headroom", true);
   accessTok  = prefs.getString("atok", "");
-  refreshTok = prefs.getString("rtok", "");
+  topupKey   = prefs.getString("tkey", "");
   tokenExpMs = prefs.getULong64("exp", 0);
+  bool hadRefresh = prefs.isKey("rtok");
   strlcpy(plan, prefs.getString("plan", "").c_str(), sizeof(plan));
   showUsed   = prefs.getBool("used", false);
   ntfyTopic  = prefs.getString("ntfy", "");
@@ -2011,6 +2028,15 @@ static void loadCreds() {
   bool projectsMigrated = prefs.getBool("prjmig", false);
   bool settingsMigrated = prefs.getBool("setmig", false);
   prefs.end();
+  // Purge a refresh token left by firmware that used to sign itself in. Done
+  // here rather than on the next saveCreds() because a board that is never
+  // re-paired would otherwise keep a live, spendable credential in flash for
+  // as long as it runs -- for a token this build has no way to use.
+  if (hadRefresh) {
+    prefs.begin("headroom", false);
+    prefs.remove("rtok");
+    prefs.end();
+  }
   selfHosted = accessTok.length() > 0;
   if (defaultScreen < 0 || defaultScreen >= UI_SCREENS) defaultScreen = 0;
   screenMask &= (1 << UI_SCREENS) - 1;      // ignore stray high bits
@@ -2054,7 +2080,12 @@ static void applyTz() {
 static void saveCreds() {
   prefs.begin("headroom", false);
   prefs.putString("atok", accessTok);
-  prefs.putString("rtok", refreshTok);
+  // A board upgrading from a build that stored one still has a refresh token
+  // in flash. It is never read now, but leaving a live credential sitting
+  // there earns nothing, and it can still be spent by anything that gets at
+  // the flash -- so the upgrade actively removes it rather than orphaning it.
+  prefs.remove("rtok");
+  prefs.putString("tkey", topupKey);
   prefs.putULong64("exp", tokenExpMs);
   prefs.putString("plan", plan);
   prefs.end();
@@ -2070,9 +2101,21 @@ static bool storeOauth(JsonObject root) {
   if (!at) at = o["access_token"].as<const char *>();
   if (!at) return false;
   accessTok = at;
-  const char *rt = o["refreshToken"].as<const char *>();
-  if (!rt) rt = o["refresh_token"].as<const char *>();
-  refreshTok = rt ? rt : "";
+  // The refresh token is deliberately dropped, even when one is sent.
+  //
+  // Refresh tokens rotate: using one invalidates it and issues a replacement.
+  // Claude Code on the owner's computer holds the same credential and refreshes
+  // whenever it likes, so a board that also refreshes is in a race it wins
+  // about half the time -- and every win signs the owner out of Claude Code.
+  // The board's access token lasts ~8 hours, so it was winning that race
+  // roughly three times a day.
+  //
+  // Buying a second Claude plan to avoid it costs several times what the board
+  // does, so sharing one account is the normal case and has to be the safe one.
+  // The board therefore holds a credential it cannot rotate, and the companion
+  // tops it up (POST /api/token). The cost is that the board goes stale some
+  // hours after the computer sleeps instead of running indefinitely -- which is
+  // a smaller price than silently breaking the login it borrowed.
   tokenExpMs = o["expiresAt"] | (uint64_t)0;
   if (!tokenExpMs) tokenExpMs = o["expires_at"] | (uint64_t)0;
   const char *sub = o["subscriptionType"].as<const char *>();
@@ -2082,39 +2125,9 @@ static bool storeOauth(JsonObject root) {
   return true;
 }
 
-// Exchange the rotating refresh token for a fresh access token, saving the new
-// pair back (the refresh token rotates — losing it means re-pasting the login).
-static bool refreshAccess() {
-  if (refreshTok.length() == 0) return false;
-  WiFiClientSecure client;
-  tlsTrust(client);
-  HTTPClient https;
-  if (!https.begin(client, REFRESH_URL)) return false;
-  https.addHeader("Content-Type", "application/json");
-  https.addHeader("User-Agent", UA);
-  JsonDocument body;
-  body["grant_type"]   = "refresh_token";
-  body["refresh_token"] = refreshTok;
-  body["client_id"]    = CLIENT_ID;
-  String out;
-  serializeJson(body, out);
-  int code = https.POST(out);
-  if (code != 200) { https.end(); return false; }
-  JsonDocument doc;
-  DeserializationError e = deserializeJson(doc, https.getString());
-  https.end();
-  if (e) return false;
-  const char *at = doc["access_token"].as<const char *>();
-  if (!at) return false;
-  accessTok = at;
-  const char *rt = doc["refresh_token"].as<const char *>();
-  if (rt) refreshTok = rt;
-  long ein = doc["expires_in"] | 0;
-  time_t now = time(nullptr);
-  tokenExpMs = (ein && now > 100000) ? (uint64_t)(now + ein) * 1000ULL : 0;
-  saveCreds();
-  return true;
-}
+// There is deliberately no refresh here. Rotating a shared refresh token is
+// what signed the owner out of Claude Code roughly daily; see storeOauth().
+// Top-ups arrive from the companion at POST /api/token instead.
 
 // Map an Anthropic usage window key to a short label that fits a 2" screen.
 static const char *shortLabel(const char *key) {
@@ -2157,12 +2170,24 @@ static bool fetchUsage(bool allowRefresh) {
   const char *collect[] = {"Retry-After"};
   https.collectHeaders(collect, 1);
   int code = https.GET();
-  if ((code == 401 || code == 403) && allowRefresh) {
+  if (code == 401 || code == 403) {
+    // Expected roughly daily, and not a fault: the access token has run out and
+    // only the companion can mint another. Deliberately not worded as an error
+    // -- the previous "login expired - re-pair" sent people to re-pair, which
+    // is a much bigger operation than opening an app that was going to run at
+    // login anyway.
     https.end();
-    if (refreshAccess()) return fetchUsage(false);
-    strlcpy(pollStatus, "login expired - re-pair", sizeof(pollStatus));
+    // Two different situations, and they need different things done. A board
+    // that has been paired since the update is simply waiting for a top-up and
+    // needs nothing from anyone. A board upgraded from firmware that refreshed
+    // for itself has no top-up key yet, and does need pairing once more.
+    strlcpy(pollStatus,
+            topupKey.length() ? "waiting for your computer"
+                              : "needs pairing once more",
+            sizeof(pollStatus));
     return false;
   }
+  (void)allowRefresh;
   if (code != 200) {
     if (code == 429) {
       // Rate limited: back off so we stop pounding the endpoint (and prolonging
@@ -2679,13 +2704,42 @@ static void handlePair() {
     return;
   }
   pairCode = ""; pairStartMs = 0;             // consume the pairing session
+  // Mint a fresh top-up key on every pair, so re-pairing a board also revokes
+  // whatever the last companion held.
+  // Not named HEX: Arduino's Print.h defines that as a number base.
+  static const char *HEXDIGITS = "0123456789abcdef";
+  topupKey = "";
+  for (int i = 0; i < 32; i++) topupKey += HEXDIGITS[esp_random() & 0xF];
+  saveCreds();
   bool live = fetchUsage(true);
-  sendJson(200, live ? "{\"ok\":true,\"live\":true}" : "{\"ok\":true,\"live\":false}");
+  String out = String("{\"ok\":true,\"live\":") + (live ? "true" : "false")
+             + ",\"topup_key\":\"" + topupKey + "\"}";
+  sendJson(200, out.c_str());
+}
+
+// Accept a newer access token for the account this board is already signed in
+// to. This is what replaces refreshing: the companion holds the refresh token
+// (as Claude Code always did) and the board is handed the short-lived result.
+static void handleTokenTopup() {
+  if (topupKey.length() == 0 ||
+      !ctEqual(server->header("X-Topup-Key"), topupKey)) {
+    sendJson(401, "{\"ok\":false,\"error\":\"bad or missing top-up key\"}");
+    return;
+  }
+  String body = server->hasArg("plain") ? server->arg("plain") : "";
+  JsonDocument doc;
+  if (deserializeJson(doc, body) || !storeOauth(doc.as<JsonObject>())) {
+    sendJson(400, "{\"ok\":false,\"error\":\"no access token in body\"}");
+    return;
+  }
+  bool live = fetchUsage(true);
+  sendJson(200, live ? "{\"ok\":true,\"live\":true}"
+                     : "{\"ok\":true,\"live\":false}");
 }
 
 static void handleDisconnect() {
   if (!apiAuthed()) { denyUnauthed(); return; }
-  accessTok = ""; refreshTok = ""; tokenExpMs = 0; selfHosted = false;
+  accessTok = ""; topupKey = ""; tokenExpMs = 0; selfHosted = false;
   plan[0] = 0;
   prefs.begin("headroom", false);
   prefs.remove("atok"); prefs.remove("rtok");
@@ -3322,6 +3376,7 @@ static void startApi() {
   server->on("/api/pair", HTTP_POST, handlePair);
   server->on("/api/pair/start", HTTP_POST, handlePairStart);
   server->on("/api/pair/challenge", HTTP_POST, handlePairChallenge);
+  server->on("/api/token", HTTP_POST, handleTokenTopup);
   server->on("/connect", HTTP_GET, handleConnectPage);
   server->on("/connect", HTTP_POST, handleConnectSave);
   server->on("/disconnect", HTTP_POST, handleDisconnect);
@@ -3334,8 +3389,9 @@ static void startApi() {
   server->on("/update/install", HTTP_POST, handleUpdateInstall);
   server->on("/setup", HTTP_GET, handleRoot);      // friendly alias for the docs
   server->on("/", HTTP_GET, handleRoot);
-  const char *watch[] = {"X-Push-Token", "X-Pair-Nonce", "X-Pair-Mac"};
-  server->collectHeaders(watch, 3);
+  const char *watch[] = {"X-Push-Token", "X-Pair-Nonce", "X-Pair-Mac",
+                         "X-Topup-Key"};
+  server->collectHeaders(watch, 4);
   server->begin();
   MDNS.begin("yoyu");
   MDNS.addService("http", "tcp", API_PORT);
@@ -3444,7 +3500,15 @@ void loop() {
     }
   }
   static unsigned long lastPoll = 0;   // self-hosted: pull fresh usage
-  if (selfHosted && millis() - lastPoll > POLL_INTERVAL_MS + pollBackoffMs) {
+  // Stand down while a companion is feeding us. Polling anyway asks Anthropic
+  // the same question twice for one answer, and the account's rate limit is
+  // shared -- which is how a board and its owner's computer end up throttling
+  // each other despite neither doing anything wrong. Self-polling resumes on
+  // its own once the pushes stop, which is the case it exists for.
+  bool fedByCompanion = lastCompanionPushMs &&
+                        (millis() - lastCompanionPushMs) < COMPANION_FRESH_MS;
+  if (selfHosted && !fedByCompanion &&
+      millis() - lastPoll > POLL_INTERVAL_MS + pollBackoffMs) {
     lastPoll = millis();
     pollUsage();
   }

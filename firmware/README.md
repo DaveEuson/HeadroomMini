@@ -10,14 +10,20 @@ speaks the **same HTTP API as the Pi tracker** — `GET /api/status` with the
 desktop **companion feeds it unchanged**. Claude-night-theme meters, reset
 countdowns, NTP clock.
 
-**Self-contained (no companion):** run the companion **once** with
+**Reads your usage itself:** run the companion **once** with
 `companion.py --pair` (it finds the board automatically) — it hands the board
-your existing Claude Code login, no copying by hand, and the board then polls
-Anthropic's usage endpoint directly and refreshes its own token. Nothing runs
-on your computer afterward. (Manual fallback if you can't run the companion:
-paste the login at `http://<board-ip>:8080/connect`.) Use a **separate Claude
-login for the board** (a spare account), or it and your computer's Claude Code
-will keep rotating each other's refresh token and logging each other out.
+your existing Claude Code login, no copying by hand, and the board then reads
+Anthropic's usage endpoint directly. (Manual fallback if you can't run the
+companion: paste the login at `http://<board-ip>:8080/connect`.)
+
+**It keeps going for several hours with your computer off, then waits for it.**
+That limit is deliberate. The board is handed a short-lived access token and
+cannot renew one for itself: renewing means spending a *rotating* refresh token,
+and Claude Code on your computer holds the same one — so a board that renewed
+was signing you out of Claude Code roughly once a day. Sharing one Claude
+account is the normal case, not a mistake, so the board gets a credential it
+cannot break. The companion tops it up whenever it runs, which for most people
+means at login without them noticing.
 
 **Prerequisite:** Claude Code installed and signed in on the computer you pair
 from. Claude Code comes with the paid Claude plans (Pro and Max), not the free

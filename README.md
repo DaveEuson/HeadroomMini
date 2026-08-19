@@ -101,9 +101,13 @@ Designed for a trusted home or office network. Details and threat model in
 
 Full guide: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md). The common ones:
 
-- **"Login expired – re-pair"** — you paired the board with the *same* Claude
-  account your computer uses, and the two rotate each other's token. Use **push
-  mode** (run the companion, no `--pair`) or pair a **spare account**.
+- **"Waiting for your computer"** — normal. The board's access token has run
+  out and only the companion can mint another; open it (or just log in, if it
+  starts at login) and the board catches up within a couple of minutes.
+- **"Login expired – re-pair"** — firmware older than v1.6.3 signed itself in
+  and rotated the token your computer was using, logging one of you out about
+  once a day. Update the board at `/update`, then pair once more; it can't
+  happen after that.
 - **"Couldn't reach the board" / 404, or no pairing code** — usually two devices
   answering to `yoyu.local` (e.g. an old Pi still running). Turn off the one
   you're not using, or point the companion straight at the board with

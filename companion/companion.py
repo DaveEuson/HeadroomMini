@@ -574,9 +574,17 @@ def pair_device(url, token="", code=None, ask_code=None):
               "give the board.", file=sys.stderr)
         _print_no_claude(board_shares_account=True)
         return False
+    # The refresh token is deliberately NOT sent. It rotates, Claude Code on
+    # this computer holds the same one, and a board that refreshed was
+    # invalidating this computer's login roughly daily -- the board won that
+    # race about half the time, and every win signed the owner out. Sharing one
+    # Claude account is the normal case (a second plan costs several times what
+    # the board does), so the board gets a credential it cannot rotate and the
+    # companion tops it up. Firmware from v1.6.2 and earlier will still accept
+    # and store a refresh token, so old boards keep the old behaviour until they
+    # update -- which is the reason to update.
     oauth = {
         "accessToken": creds["accessToken"],
-        "refreshToken": creds.get("refreshToken"),
         "expiresAt": creds.get("expiresAt", 0),
         "subscriptionType": creds.get("subscriptionType"),
     }
@@ -629,11 +637,23 @@ def pair_device(url, token="", code=None, ask_code=None):
         print(f"Board rejected pairing: {result.get('error')}", file=sys.stderr)
         return False
     live = result.get("live")
-    print(f"Paired {url} — the board updates itself now"
+    key = result.get("topup_key")
+    if key:
+        save_topup_key(url, key)
+    print(f"Paired {url} — the board reads your usage itself now"
           + ("." if live else " (first read pending; it will retry)."))
-    print("Tip: use a SEPARATE Claude login for the board. If it shares this "
-          "computer's login, the two will rotate each other's token and log "
-          "each other out.")
+    if key:
+        print("It keeps going for several hours with this computer off, then "
+              "waits for it.")
+        print("Leave the companion set to start at login and you'll never "
+              "notice the gap.")
+    else:
+        # An older board: it stored the refresh token and will rotate it.
+        print("Note: this board's firmware is older and signs itself in "
+              "independently,", file=sys.stderr)
+        print("which can log Claude Code out on this computer about once a "
+              "day. Updating", file=sys.stderr)
+        print("the board's firmware (/update) fixes that.", file=sys.stderr)
     return True
 
 
@@ -707,7 +727,7 @@ def discover_pi(port=8080):
     return None
 
 
-def save_pi(url):
+def _merge_config(**fields):
     path = _config_path()
     data = {}
     if os.path.isfile(path):
@@ -716,12 +736,81 @@ def save_pi(url):
                 data = json.load(fh)
         except (OSError, ValueError):
             data = {}
-    data["pi"] = url
+    data.update(fields)
     try:
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2)
     except OSError:
         pass
+
+
+def save_pi(url):
+    _merge_config(pi=url)
+
+
+def _topup_keys():
+    path = _config_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh).get("topup_keys") or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_topup_key(url, key):
+    """Per board, so feeding two of them doesn't have one clobber the other."""
+    keys = _topup_keys()
+    keys[url.rstrip("/")] = key
+    _merge_config(topup_keys=keys)
+
+
+_last_topup = {}
+TOPUP_EVERY = 1800          # seconds; the access token lasts hours, not minutes
+
+
+def maybe_top_up(url, now=None):
+    """Rate-limited top-up. Returns True if one was actually sent."""
+    now = time.time() if now is None else now
+    if not _topup_keys().get(url.rstrip("/")):
+        return False                      # not a board we paired
+    if now - _last_topup.get(url, 0) < TOPUP_EVERY:
+        return False
+    _last_topup[url] = now
+    return top_up_token(url)
+
+
+def top_up_token(url, key=None):
+    """Hand a board a newer access token for the account it already runs on.
+
+    This is what replaces the board refreshing for itself. Refresh tokens
+    rotate, and Claude Code on this computer holds the same one -- a board that
+    refreshed was invalidating this computer's login roughly daily, which is a
+    much worse bug than a board that goes stale while the computer is off.
+
+    So the refresh stays here, where it always was, and the board is handed the
+    short-lived result. Returns True if the board took it.
+    """
+    key = key or _topup_keys().get(url.rstrip("/"))
+    if not key:
+        return False                      # never paired from this computer
+    creds, save_fn = read_creds()
+    if not creds:
+        return False
+    token = valid_token(creds, save_fn)    # refreshes here, and writes back
+    if not token:
+        return False
+    body = json.dumps({
+        "accessToken": token,
+        "expiresAt": creds.get("expiresAt", 0),
+        "subscriptionType": creds.get("subscriptionType"),
+    }).encode("utf-8")
+    try:
+        res = _pair_post(url, "/api/token", body,
+                         {"Content-Type": "application/json",
+                          "X-Topup-Key": key}, timeout=20)
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+    return bool(res.get("ok"))
 
 
 # --------------------------------------------------------- run on every login
@@ -1044,6 +1133,12 @@ def run_once(cfg):
     # cfg["pi"] may be a comma-separated list — one companion can feed
     # several trackers (e.g. a Pi on the desk and a Mini on the shelf).
     targets = [t.strip() for t in str(cfg["pi"]).split(",") if t.strip()]
+    # Top up any self-hosted board's access token while we are here. The board
+    # cannot mint one for itself by design, so this is the whole reason it keeps
+    # working when this computer is asleep. Cheap: it is skipped for boards we
+    # never paired, and the token is one we already hold.
+    for target in targets:
+        maybe_top_up(target)
     delivered = 0
     for target in targets:
         try:
