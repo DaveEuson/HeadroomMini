@@ -194,7 +194,7 @@ def valid_token(creds, save_fn):
         print(f"token refresh failed ({exc})", file=sys.stderr)
         if "400" in str(exc):
             print("  This usually means something else already used this "
-                  "login's refresh token —", file=sys.stderr)
+                  "login's refresh token -", file=sys.stderr)
             print("  commonly a Yoyu board signed in to the same Claude "
                   "account.", file=sys.stderr)
         print("  Sign in again: run  claude  in a terminal, then type  /login .",
@@ -663,7 +663,7 @@ def pair_device(url, token="", code=None, ask_code=None):
     key = result.get("topup_key")
     if key:
         save_topup_key(url, key)
-    print(f"Paired {url} — the board reads your usage itself now"
+    print(f"Paired {url} - the board reads your usage itself now"
           + ("." if live else " (first read pending; it will retry)."))
     if key:
         print("It keeps going for several hours with this computer off, then "
@@ -1102,6 +1102,10 @@ def login_help(state=None, board_shares_account=False):
     return out
 
 
+# Console output stays ASCII on purpose. Windows terminals default to cp1252,
+# which cannot encode an em dash, so one printed at the moment of success came
+# out as "Paired http://yoyu.local:8080 ? the board reads your usage itself now"
+# -- a garbled character in the first thing a new user is told.
 def _print_no_claude(state=None, board_shares_account=False):
     """A clear, actionable message when there's no Claude Code login to read."""
     print("", file=sys.stderr)
@@ -1111,7 +1115,7 @@ def _print_no_claude(state=None, board_shares_account=False):
               file=sys.stderr)
         print("  then run  claude  and type  /login .", file=sys.stderr)
     print("  (Run this companion on the same computer where you use Claude "
-          "Code — not on the Pi.)", file=sys.stderr)
+          "Code - not on the Pi.)", file=sys.stderr)
 
 
 def run_once(cfg):
@@ -1462,12 +1466,12 @@ def main():
         _ok, retry_after, rate_limited = run_once(cfg)
         if rate_limited:
             rl_backoff = min(1800, max(retry_after, rl_backoff * 2 or base))
-            print(f"rate limited by Anthropic — backing off, next try in "
+            print(f"rate limited by Anthropic - backing off, next try in "
                   f"~{base + rl_backoff}s (staying quiet so we stop hammering "
                   "the usage endpoint)", file=sys.stderr)
         else:
             if rl_backoff:
-                print("usage endpoint recovered — back to normal cadence",
+                print("usage endpoint recovered - back to normal cadence",
                       file=sys.stderr)
             rl_backoff = 0
 
