@@ -186,8 +186,19 @@ def valid_token(creds, save_fn):
         with urllib.request.urlopen(req, timeout=20, context=_SSL_CONTEXT) as resp:
             result = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, OSError, ValueError) as exc:
-        print(f"token refresh failed ({exc}); Claude Code can refresh it by "
-              "running any command.", file=sys.stderr)
+        # A 400 here almost always means the refresh token was already spent by
+        # something else -- most often a Yoyu board signed in to the same Claude
+        # account, which rotates this computer's token out from under it. Worth
+        # naming, because the obvious reading ("network problem") sends people
+        # looking in the wrong place entirely.
+        print(f"token refresh failed ({exc})", file=sys.stderr)
+        if "400" in str(exc):
+            print("  This usually means something else already used this "
+                  "login's refresh token -", file=sys.stderr)
+            print("  commonly a Yoyu board signed in to the same Claude "
+                  "account.", file=sys.stderr)
+        print("  Sign in again: run  claude  in a terminal, then type  /login .",
+              file=sys.stderr)
         return None
     oauth = dict(creds["_raw"])
     oauth["accessToken"] = result["access_token"]
@@ -269,8 +280,8 @@ def get_live_windows():
     token = valid_token(creds, save_fn)
     if not token:
         raise LiveUnavailable(
-            "couldn't refresh the Claude Code token; run `claude` on this "
-            "computer once to refresh the login")
+            "Claude Code's login here needs signing in again — run `claude`, "
+            "then /login")
     try:
         raw = fetch_usage(token)
     except urllib.error.HTTPError as exc:
@@ -540,8 +551,21 @@ def _pair_hmac(code, msg):
 def _pair_post(url, path, data=None, headers=None, timeout=15):
     req = urllib.request.Request(url.rstrip("/") + path, data=data,
                                  headers=headers or {}, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        # The board answers a refusal with a status code AND a JSON reason, and
+        # urllib turns the status into an exception before anyone reads the
+        # reason. Handing back the body lets callers say "the code expired"
+        # instead of "couldn't reach the board", which is what it looked like.
+        try:
+            body = json.loads(exc.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001 - not JSON: a real transport failure
+            raise exc
+        if isinstance(body, dict):
+            return body
+        raise
 
 
 def pair_device(url, token="", code=None, ask_code=None):
@@ -556,11 +580,24 @@ def pair_device(url, token="", code=None, ask_code=None):
     """
     creds, _ = read_creds()
     if not creds:
-        _print_no_claude()
+        # Pairing hands the board THIS computer's login, so there is nothing to
+        # pair with. Say that, rather than letting the board's "login expired"
+        # and the companion's silence look like two unrelated faults.
+        print("Can't pair: there's no Claude Code login on this computer to "
+              "give the board.", file=sys.stderr)
+        _print_no_claude(board_shares_account=True)
         return False
+    # The refresh token is deliberately NOT sent. It rotates, Claude Code on
+    # this computer holds the same one, and a board that refreshed was
+    # invalidating this computer's login roughly daily -- the board won that
+    # race about half the time, and every win signed the owner out. Sharing one
+    # Claude account is the normal case (a second plan costs several times what
+    # the board does), so the board gets a credential it cannot rotate and the
+    # companion tops it up. Firmware from v1.6.2 and earlier will still accept
+    # and store a refresh token, so old boards keep the old behaviour until they
+    # update -- which is the reason to update.
     oauth = {
         "accessToken": creds["accessToken"],
-        "refreshToken": creds.get("refreshToken"),
         "expiresAt": creds.get("expiresAt", 0),
         "subscriptionType": creds.get("subscriptionType"),
     }
@@ -571,13 +608,17 @@ def pair_device(url, token="", code=None, ask_code=None):
         headers["X-Push-Token"] = token
     else:
         # 1. Ask the board to enter pairing mode — it shows a code on its screen.
-        try:
-            _pair_post(url, "/api/pair/start", timeout=10)
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
-            return False
-        # 2. Get that code from the user (out-of-band — this is the whole point).
+        #
+        # Skipped when a code was handed to us, because starting a session mints
+        # a NEW code: doing it here would replace the very code the caller is
+        # about to present, and --pair-code could never once have succeeded.
         if code is None:
+            try:
+                _pair_post(url, "/api/pair/start", timeout=10)
+            except (urllib.error.URLError, OSError, ValueError) as exc:
+                print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
+                return False
+            # 2. Get that code from the user (out-of-band — the whole point).
             prompt = "Enter the 6-character code shown on your board's screen: "
             code = ask_code() if ask_code else input(prompt)
         code = (code or "").strip().upper()
@@ -591,6 +632,12 @@ def pair_device(url, token="", code=None, ask_code=None):
                             {"Content-Type": "text/plain"}, timeout=10)
         except (urllib.error.URLError, OSError, ValueError) as exc:
             print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
+            return False
+        if ch.get("error") == "not pairing":
+            print("The board isn't in pairing mode (a code is only good for "
+                  "3 minutes).", file=sys.stderr)
+            print("Run  --pair-start  to put a fresh code on its screen, then "
+                  "pass that one.", file=sys.stderr)
             return False
         if not ch.get("ok") or not hmac.compare_digest(
                 ch.get("mac", ""), _pair_hmac(code, nonce.encode())):
@@ -613,11 +660,23 @@ def pair_device(url, token="", code=None, ask_code=None):
         print(f"Board rejected pairing: {result.get('error')}", file=sys.stderr)
         return False
     live = result.get("live")
-    print(f"Paired {url} — the board updates itself now"
+    key = result.get("topup_key")
+    if key:
+        save_topup_key(url, key)
+    print(f"Paired {url} - the board reads your usage itself now"
           + ("." if live else " (first read pending; it will retry)."))
-    print("Tip: use a SEPARATE Claude login for the board. If it shares this "
-          "computer's login, the two will rotate each other's token and log "
-          "each other out.")
+    if key:
+        print("It keeps going for several hours with this computer off, then "
+              "waits for it.")
+        print("Leave the companion set to start at login and you'll never "
+              "notice the gap.")
+    else:
+        # An older board: it stored the refresh token and will rotate it.
+        print("Note: this board's firmware is older and signs itself in "
+              "independently,", file=sys.stderr)
+        print("which can log Claude Code out on this computer about once a "
+              "day. Updating", file=sys.stderr)
+        print("the board's firmware (/update) fixes that.", file=sys.stderr)
     return True
 
 
@@ -691,7 +750,7 @@ def discover_pi(port=8080):
     return None
 
 
-def save_pi(url):
+def _merge_config(**fields):
     path = _config_path()
     data = {}
     if os.path.isfile(path):
@@ -700,12 +759,81 @@ def save_pi(url):
                 data = json.load(fh)
         except (OSError, ValueError):
             data = {}
-    data["pi"] = url
+    data.update(fields)
     try:
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2)
     except OSError:
         pass
+
+
+def save_pi(url):
+    _merge_config(pi=url)
+
+
+def _topup_keys():
+    path = _config_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh).get("topup_keys") or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_topup_key(url, key):
+    """Per board, so feeding two of them doesn't have one clobber the other."""
+    keys = _topup_keys()
+    keys[url.rstrip("/")] = key
+    _merge_config(topup_keys=keys)
+
+
+_last_topup = {}
+TOPUP_EVERY = 1800          # seconds; the access token lasts hours, not minutes
+
+
+def maybe_top_up(url, now=None):
+    """Rate-limited top-up. Returns True if one was actually sent."""
+    now = time.time() if now is None else now
+    if not _topup_keys().get(url.rstrip("/")):
+        return False                      # not a board we paired
+    if now - _last_topup.get(url, 0) < TOPUP_EVERY:
+        return False
+    _last_topup[url] = now
+    return top_up_token(url)
+
+
+def top_up_token(url, key=None):
+    """Hand a board a newer access token for the account it already runs on.
+
+    This is what replaces the board refreshing for itself. Refresh tokens
+    rotate, and Claude Code on this computer holds the same one -- a board that
+    refreshed was invalidating this computer's login roughly daily, which is a
+    much worse bug than a board that goes stale while the computer is off.
+
+    So the refresh stays here, where it always was, and the board is handed the
+    short-lived result. Returns True if the board took it.
+    """
+    key = key or _topup_keys().get(url.rstrip("/"))
+    if not key:
+        return False                      # never paired from this computer
+    creds, save_fn = read_creds()
+    if not creds:
+        return False
+    token = valid_token(creds, save_fn)    # refreshes here, and writes back
+    if not token:
+        return False
+    body = json.dumps({
+        "accessToken": token,
+        "expiresAt": creds.get("expiresAt", 0),
+        "subscriptionType": creds.get("subscriptionType"),
+    }).encode("utf-8")
+    try:
+        res = _pair_post(url, "/api/token", body,
+                         {"Content-Type": "application/json",
+                          "X-Topup-Key": key}, timeout=20)
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+    return bool(res.get("ok"))
 
 
 # --------------------------------------------------------- run on every login
@@ -888,28 +1016,106 @@ def load_config():
     return cfg
 
 
-def _print_no_claude():
-    """A clear, actionable message when there's no Claude Code login to read."""
-    claude_dir = os.path.join(os.path.expanduser("~"), ".claude")
-    print("", file=sys.stderr)
-    print("Can't find your Claude usage on this computer.", file=sys.stderr)
-    if os.path.isdir(claude_dir):
-        print("  Claude Code is installed here, but you're not signed in.",
-              file=sys.stderr)
-        print("  Fix: open a terminal, run  claude  , then type  /login .",
-              file=sys.stderr)
+def login_state(claude_dir=None):
+    """Which of the several 'no login' situations we are actually in.
+
+    These used to collapse into one message that said "you're not signed in",
+    which reads as simply wrong to somebody whose Claude Code is working fine
+    in the next window. The states need different things done about them, and
+    "signed_out" in particular has a cause worth naming -- see login_help().
+
+    claude_dir is for tests; production always reads the real location.
+    """
+    claude_dir = claude_dir or os.path.join(os.path.expanduser("~"), ".claude")
+    if not os.path.isdir(claude_dir):
+        return "not_installed"
+    path = os.path.join(claude_dir, ".credentials.json")
+    if not os.path.isfile(path):
+        return "never_signed_in"
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError):
+        return "unreadable"
+    o = raw.get("claudeAiOauth") if isinstance(raw, dict) else None
+    o = o if isinstance(o, dict) else (raw if isinstance(raw, dict) else {})
+    if o.get("accessToken") or o.get("access_token"):
+        return "ok"
+    # The keys are present and empty rather than missing: something signed
+    # Claude Code out and wrote the record back without its secrets. That is a
+    # different situation from never having logged in, and it is the one a
+    # second device sharing the account produces.
+    if "accessToken" in o or "access_token" in o:
+        return "signed_out"
+    return "never_signed_in"
+
+
+def login_help(state=None, board_shares_account=False):
+    """The lines to show someone whose Claude Code login can't be read.
+
+    Returned rather than printed so the tray app -- which has no console -- can
+    put the same words in front of people.
+    """
+    state = state or login_state()
+    out = []
+    if state == "not_installed":
+        out += ["Claude Code isn't installed on this computer.",
+                "",
+                "  Yoyu reads Claude Code's own login to get your real usage",
+                "  numbers, so it needs Claude Code installed and signed in on",
+                "  the machine you actually work on.",
+                "",
+                "  Install it from  https://claude.com/claude-code  , then run",
+                "  this again."]
+        return out
+
+    if state == "signed_out":
+        out += ["Your Claude Code login on this computer has been cleared.",
+                "",
+                "  The login file is still there, but its tokens are empty --",
+                "  something signed Claude Code out. Signing in again fixes it."]
+    elif state == "unreadable":
+        out += ["Your Claude Code login file couldn't be read.",
+                "",
+                "  It exists but isn't valid JSON. Signing in again rewrites it."]
     else:
-        print("  Claude Code (the CLI) isn't installed on this computer.",
-              file=sys.stderr)
-        print("  The tracker reads Claude Code's own login to get your real",
-              file=sys.stderr)
-        print("  usage, so it needs Claude Code installed and signed in HERE.",
-              file=sys.stderr)
+        out += ["No Claude Code login found on this computer.",
+                "",
+                "  Claude Code is installed here but hasn't been signed in yet."]
+
+    out += ["",
+            "  To fix it:",
+            "    1. Open a terminal.",
+            "    2. Run:   claude",
+            "    3. Type:  /login      and follow the browser prompt.",
+            "    4. Close it, then start Yoyu again.",
+            "",
+            "  It takes about a minute, and you only see the browser once."]
+
+    if board_shares_account or state == "signed_out":
+        out += ["",
+                "  If your Yoyu board is signed in to this SAME Claude account,",
+                "  expect this to come back: the board and this computer refresh",
+                "  the same login and rotate each other out, usually within a day.",
+                "  Give the board its own Claude login, or stop it polling and",
+                "  leave the companion to feed it."]
+    return out
+
+
+# Console output stays ASCII on purpose. Windows terminals default to cp1252,
+# which cannot encode an em dash, so one printed at the moment of success came
+# out as "Paired http://yoyu.local:8080 ? the board reads your usage itself now"
+# -- a garbled character in the first thing a new user is told.
+def _print_no_claude(state=None, board_shares_account=False):
+    """A clear, actionable message when there's no Claude Code login to read."""
+    print("", file=sys.stderr)
+    for line in login_help(state, board_shares_account):
+        print(line, file=sys.stderr)
         print("  Install:  npm install -g @anthropic-ai/claude-code",
               file=sys.stderr)
         print("  then run  claude  and type  /login .", file=sys.stderr)
     print("  (Run this companion on the same computer where you use Claude "
-          "Code — not on the Pi.)", file=sys.stderr)
+          "Code - not on the Pi.)", file=sys.stderr)
 
 
 def run_once(cfg):
@@ -954,6 +1160,12 @@ def run_once(cfg):
     # cfg["pi"] may be a comma-separated list — one companion can feed
     # several trackers (e.g. a Pi on the desk and a Mini on the shelf).
     targets = [t.strip() for t in str(cfg["pi"]).split(",") if t.strip()]
+    # Top up any self-hosted board's access token while we are here. The board
+    # cannot mint one for itself by design, so this is the whole reason it keeps
+    # working when this computer is asleep. Cheap: it is skipped for boards we
+    # never paired, and the token is one we already hold.
+    for target in targets:
+        maybe_top_up(target)
     delivered = 0
     for target in targets:
         try:
@@ -1141,6 +1353,11 @@ def main():
                          "runs self-contained, then exit (board auto-found if "
                          "no URL is given). The board shows a one-time code you "
                          "confirm, so the login only goes to your real board.")
+    ap.add_argument("--pair-start", nargs="?", const="", default=None,
+                    metavar="URL",
+                    help="put the board into pairing mode and exit, so the code "
+                         "on its screen can be passed to --pair-code (for "
+                         "terminals with no interactive prompt)")
     ap.add_argument("--pair-code", default=None, metavar="CODE",
                     help="the code shown on the board's screen (otherwise you "
                          "are prompted for it during --pair)")
@@ -1165,6 +1382,22 @@ def main():
                      "shown on its screen: --pair http://<its-address>:8080")
         sys.exit(0 if pair_device(url, token=args.token,
                                   code=args.pair_code) else 1)
+
+    if args.pair_start is not None:
+        url = args.pair_start or cfg.get("pi") or discover_pi()
+        if not url:
+            print("Couldn't find a board. Pass one: --pair-start "
+                  "http://<its-address>:8080", file=sys.stderr)
+            sys.exit(1)
+        try:
+            _pair_post(url, "/api/pair/start", timeout=10)
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
+            sys.exit(1)
+        print(f"{url} is showing a 6-character code on its screen, good for "
+              "3 minutes.")
+        print(f"Finish with:  companion.py --pair {url} --pair-code <CODE>")
+        return
 
     if args.uninstall:
         removed = uninstall_autostart()
@@ -1233,12 +1466,12 @@ def main():
         _ok, retry_after, rate_limited = run_once(cfg)
         if rate_limited:
             rl_backoff = min(1800, max(retry_after, rl_backoff * 2 or base))
-            print(f"rate limited by Anthropic — backing off, next try in "
+            print(f"rate limited by Anthropic - backing off, next try in "
                   f"~{base + rl_backoff}s (staying quiet so we stop hammering "
                   "the usage endpoint)", file=sys.stderr)
         else:
             if rl_backoff:
-                print("usage endpoint recovered — back to normal cadence",
+                print("usage endpoint recovered - back to normal cadence",
                       file=sys.stderr)
             rl_backoff = 0
 
