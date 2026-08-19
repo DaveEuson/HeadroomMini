@@ -551,8 +551,21 @@ def _pair_hmac(code, msg):
 def _pair_post(url, path, data=None, headers=None, timeout=15):
     req = urllib.request.Request(url.rstrip("/") + path, data=data,
                                  headers=headers or {}, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        # The board answers a refusal with a status code AND a JSON reason, and
+        # urllib turns the status into an exception before anyone reads the
+        # reason. Handing back the body lets callers say "the code expired"
+        # instead of "couldn't reach the board", which is what it looked like.
+        try:
+            body = json.loads(exc.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001 - not JSON: a real transport failure
+            raise exc
+        if isinstance(body, dict):
+            return body
+        raise
 
 
 def pair_device(url, token="", code=None, ask_code=None):
@@ -595,13 +608,17 @@ def pair_device(url, token="", code=None, ask_code=None):
         headers["X-Push-Token"] = token
     else:
         # 1. Ask the board to enter pairing mode — it shows a code on its screen.
-        try:
-            _pair_post(url, "/api/pair/start", timeout=10)
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
-            return False
-        # 2. Get that code from the user (out-of-band — this is the whole point).
+        #
+        # Skipped when a code was handed to us, because starting a session mints
+        # a NEW code: doing it here would replace the very code the caller is
+        # about to present, and --pair-code could never once have succeeded.
         if code is None:
+            try:
+                _pair_post(url, "/api/pair/start", timeout=10)
+            except (urllib.error.URLError, OSError, ValueError) as exc:
+                print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
+                return False
+            # 2. Get that code from the user (out-of-band — the whole point).
             prompt = "Enter the 6-character code shown on your board's screen: "
             code = ask_code() if ask_code else input(prompt)
         code = (code or "").strip().upper()
@@ -615,6 +632,12 @@ def pair_device(url, token="", code=None, ask_code=None):
                             {"Content-Type": "text/plain"}, timeout=10)
         except (urllib.error.URLError, OSError, ValueError) as exc:
             print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
+            return False
+        if ch.get("error") == "not pairing":
+            print("The board isn't in pairing mode (a code is only good for "
+                  "3 minutes).", file=sys.stderr)
+            print("Run  --pair-start  to put a fresh code on its screen, then "
+                  "pass that one.", file=sys.stderr)
             return False
         if not ch.get("ok") or not hmac.compare_digest(
                 ch.get("mac", ""), _pair_hmac(code, nonce.encode())):
@@ -1326,6 +1349,11 @@ def main():
                          "runs self-contained, then exit (board auto-found if "
                          "no URL is given). The board shows a one-time code you "
                          "confirm, so the login only goes to your real board.")
+    ap.add_argument("--pair-start", nargs="?", const="", default=None,
+                    metavar="URL",
+                    help="put the board into pairing mode and exit, so the code "
+                         "on its screen can be passed to --pair-code (for "
+                         "terminals with no interactive prompt)")
     ap.add_argument("--pair-code", default=None, metavar="CODE",
                     help="the code shown on the board's screen (otherwise you "
                          "are prompted for it during --pair)")
@@ -1350,6 +1378,22 @@ def main():
                      "shown on its screen: --pair http://<its-address>:8080")
         sys.exit(0 if pair_device(url, token=args.token,
                                   code=args.pair_code) else 1)
+
+    if args.pair_start is not None:
+        url = args.pair_start or cfg.get("pi") or discover_pi()
+        if not url:
+            print("Couldn't find a board. Pass one: --pair-start "
+                  "http://<its-address>:8080", file=sys.stderr)
+            sys.exit(1)
+        try:
+            _pair_post(url, "/api/pair/start", timeout=10)
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            print(f"Couldn't reach the board at {url}: {exc}", file=sys.stderr)
+            sys.exit(1)
+        print(f"{url} is showing a 6-character code on its screen, good for "
+              "3 minutes.")
+        print(f"Finish with:  companion.py --pair {url} --pair-code <CODE>")
+        return
 
     if args.uninstall:
         removed = uninstall_autostart()

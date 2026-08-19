@@ -1412,6 +1412,7 @@ static void drawSettings() {
 // Draw whichever screen is active (data updates / ticks call this).
 static bool pairingActive();   // defined with the pairing handlers below
 static void drawPairScreen();
+static void wake();            // defined with the motion handling below
 
 static void drawScreen() {
   // While pairing, the one-time code owns the screen — any full redraw
@@ -1628,6 +1629,11 @@ static void handleStatus() {
   // board on a shelf — or more than one at a time — undiagnosable remotely.
   // pollStatus is the string the meters print when they have no data.
   doc["poll_status"] = pollStatus[0] ? pollStatus : (const char *)nullptr;
+  // Whether anything is actually visible. A board that is drawing correctly
+  // onto a dark panel looks identical, over the network, to one that is fine.
+  doc["screen_off"] = screenOff;
+  doc["backlight"] = backlight;
+  doc["pairing"] = pairingActive();
   JsonObject rc = doc["release_check"].to<JsonObject>();
   rc["ok"]          = tagFetchOk;
   rc["tries"]       = tagFetchTries;   // 0 = never run since boot
@@ -2666,6 +2672,11 @@ static void handlePairStart() {
   pairCode = "";
   for (int i = 0; i < 6; i++) pairCode += AB[esp_random() % 32];
   pairStartMs = millis();
+  // Wake first. A dimmed or face-down board would otherwise render the code
+  // onto a dark panel and report success -- the companion waits for a number
+  // nobody can read, which is indistinguishable from the board ignoring the
+  // request. Pairing is the one moment the screen is the entire interface.
+  wake();
   drawPairScreen();
   sendJson(200, "{\"ok\":true}");
 }
@@ -3491,7 +3502,11 @@ void loop() {
   // Auto-rotate: advance to the next enabled screen every rotateSecs, but only
   // when more than one screen is enabled and you haven't touched it recently.
   static unsigned long lastRotate = 0;
-  if (rotateSecs > 0 && !screenOff &&
+  // Not while pairing. The code owns the screen for three minutes, and rotating
+  // through the normal screens underneath it is what made the code impossible
+  // to read: it appears, then the next rotation paints over it. Every other
+  // screen-owning state (Timer, Actions, Settings) already stands down here.
+  if (rotateSecs > 0 && !screenOff && !pairingActive() &&
       __builtin_popcount(screenMask & ((1 << UI_SCREENS) - 1)) > 1) {
     unsigned long iv = (unsigned long)rotateSecs * 1000UL;
     if (millis() - lastRotate >= iv && millis() - lastUserTouch >= iv) {
